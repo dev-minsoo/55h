@@ -7,7 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
+
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -18,12 +19,16 @@ import (
 )
 
 type HostEntry struct {
-	Patterns     []string
-	HostName     string
-	User         string
-	Port         string
-	IdentityFile string
-	ProxyJump    string
+	Patterns            []string
+	HostName            string
+	User                string
+	Port                string
+	IdentityFile        string
+	ProxyJump           string
+	ServerAliveInterval *int
+	ServerAliveCountMax *int
+	ForwardAgent        *bool
+	IdentitiesOnly      *bool
 }
 
 func (entry HostEntry) SearchText() string {
@@ -34,6 +39,18 @@ func (entry HostEntry) SearchText() string {
 		entry.Port,
 		entry.IdentityFile,
 		entry.ProxyJump,
+	}
+	if entry.ServerAliveInterval != nil {
+		parts = append(parts, fmt.Sprintf("%d", *entry.ServerAliveInterval))
+	}
+	if entry.ServerAliveCountMax != nil {
+		parts = append(parts, fmt.Sprintf("%d", *entry.ServerAliveCountMax))
+	}
+	if entry.ForwardAgent != nil {
+		parts = append(parts, fmt.Sprintf("%t", *entry.ForwardAgent))
+	}
+	if entry.IdentitiesOnly != nil {
+		parts = append(parts, fmt.Sprintf("%t", *entry.IdentitiesOnly))
 	}
 	return strings.ToLower(strings.Join(parts, " "))
 }
@@ -97,6 +114,15 @@ const (
 
 func main() {
 	configPath := resolveConfigPath()
+
+	// CLI: support "55h add ssh ..." before launching TUI
+	if len(os.Args) >= 3 && os.Args[1] == "add" && os.Args[2] == "ssh" {
+		if err := handleAddSSH(os.Args[3:], configPath); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	app := tview.NewApplication()
 	pages := tview.NewPages()
@@ -341,6 +367,20 @@ func (state *AppState) renderDetails(index int) {
 		{"Port", entry.Port},
 		{"IdentityFile", entry.IdentityFile},
 		{"ProxyJump", entry.ProxyJump},
+	}
+
+	// Append optional fields when present
+	if entry.ServerAliveInterval != nil {
+		rows = append(rows, [2]string{"ServerAliveInterval", fmt.Sprintf("%d", *entry.ServerAliveInterval)})
+	}
+	if entry.ServerAliveCountMax != nil {
+		rows = append(rows, [2]string{"ServerAliveCountMax", fmt.Sprintf("%d", *entry.ServerAliveCountMax)})
+	}
+	if entry.ForwardAgent != nil {
+		rows = append(rows, [2]string{"ForwardAgent", fmt.Sprintf("%t", *entry.ForwardAgent)})
+	}
+	if entry.IdentitiesOnly != nil {
+		rows = append(rows, [2]string{"IdentitiesOnly", fmt.Sprintf("%t", *entry.IdentitiesOnly)})
 	}
 
 	for i, row := range rows {
@@ -681,77 +721,369 @@ func fuzzyMatch(query string, target string) bool {
 	return false
 }
 
+func parseBoolVal(s string) (*bool, bool) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "yes", "true", "1":
+		b := true
+		return &b, true
+	case "no", "false", "0":
+		b := false
+		return &b, true
+	default:
+		return nil, false
+	}
+}
+
+func parseIntVal(s string) (*int, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, false
+	}
+	v, err := strconv.Atoi(s)
+	if err != nil {
+		return nil, false
+	}
+	return &v, true
+}
+
 func loadSSHConfig(path string) ([]HostEntry, error) {
 	if path == "" {
 		return nil, fmt.Errorf("missing config path")
 	}
 
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	var entries []HostEntry
-	var current *HostEntry
-
-	flush := func() {
-		if current == nil {
-			return
-		}
-		entries = append(entries, *current)
-		current = nil
-	}
-
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		fields := strings.Fields(line)
-		if len(fields) == 0 {
-			continue
-		}
-
-		key := strings.ToLower(fields[0])
-		if key == "host" {
-			flush()
-			current = &HostEntry{Patterns: fields[1:]}
-			continue
-		}
-
-		if current == nil {
-			continue
-		}
-
-		value := strings.TrimSpace(strings.Join(fields[1:], " "))
-		switch key {
-		case "hostname":
-			current.HostName = value
-		case "user":
-			current.User = value
-		case "port":
-			current.Port = value
-		case "identityfile":
-			current.IdentityFile = value
-		case "proxyjump":
-			current.ProxyJump = value
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
+	// Verify base file exists (top-level should error if missing)
+	if _, err := os.Stat(path); err != nil {
 		return nil, err
 	}
 
-	flush()
+	visited := make(map[string]bool)
+	entries := []HostEntry{}
 
-	sort.Slice(entries, func(i, j int) bool {
-		left := strings.Join(entries[i].Patterns, " ")
-		right := strings.Join(entries[j].Patterns, " ")
-		return left < right
-	})
+	var loadFile func(string) error
+	loadFile = func(p string) error {
+		abs, err := filepath.Abs(p)
+		if err == nil {
+			p = abs
+		}
+		if visited[p] {
+			return nil
+		}
+		visited[p] = true
+
+		f, err := os.Open(p)
+		if err != nil {
+			// If top-level caller provided a path we already checked it exists.
+			// For includes, callers should check existence before calling.
+			return err
+		}
+		defer f.Close()
+
+		scanner := bufio.NewScanner(f)
+		var current *HostEntry
+		flush := func() {
+			if current == nil {
+				return
+			}
+			entries = append(entries, *current)
+			current = nil
+		}
+
+		dir := filepath.Dir(p)
+
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			fields := strings.Fields(line)
+			if len(fields) == 0 {
+				continue
+			}
+			key := strings.ToLower(fields[0])
+
+			if key == "include" {
+				// Expand include patterns (supports multiple patterns on one line)
+				for _, pat := range fields[1:] {
+					// Resolve relative paths against current file dir
+					if !filepath.IsAbs(pat) {
+						pat = filepath.Join(dir, pat)
+					}
+					// Glob expansion
+					matches, gerr := filepath.Glob(pat)
+					if gerr != nil || len(matches) == 0 {
+						// If no glob matches and the pattern is a plain file, check existence
+						if strings.IndexAny(pat, "*?[]") == -1 {
+							if _, sterr := os.Stat(pat); sterr == nil {
+								// single file exists
+								_ = loadFile(pat)
+							}
+						}
+						continue
+					}
+					for _, m := range matches {
+						// Ignore missing files quietly
+						if _, statErr := os.Stat(m); statErr != nil {
+							continue
+						}
+						_ = loadFile(m)
+					}
+				}
+				continue
+			}
+
+			if key == "host" {
+				flush()
+				if len(fields) > 1 {
+					current = &HostEntry{Patterns: fields[1:]}
+				} else {
+					current = &HostEntry{Patterns: []string{}}
+				}
+				continue
+			}
+
+			if current == nil {
+				continue
+			}
+
+			value := strings.TrimSpace(strings.Join(fields[1:], " "))
+			switch key {
+			case "hostname":
+				current.HostName = value
+			case "user":
+				current.User = value
+			case "port":
+				current.Port = value
+			case "identityfile":
+				current.IdentityFile = value
+			case "proxyjump":
+				current.ProxyJump = value
+			case "serveraliveinterval":
+				if v, ok := parseIntVal(value); ok {
+					current.ServerAliveInterval = v
+				}
+			case "serveralivecountmax":
+				if v, ok := parseIntVal(value); ok {
+					current.ServerAliveCountMax = v
+				}
+			case "forwardagent":
+				if b, ok := parseBoolVal(value); ok {
+					current.ForwardAgent = b
+				}
+			case "identitiesonly":
+				if b, ok := parseBoolVal(value); ok {
+					current.IdentitiesOnly = b
+				}
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			return err
+		}
+
+		flush()
+		return nil
+	}
+
+	if err := loadFile(path); err != nil {
+		return nil, err
+	}
 
 	return entries, nil
+}
+
+func formatBoolYesNo(b bool) string {
+	if b {
+		return "yes"
+	}
+	return "no"
+}
+
+// handleAddSSH implements: 55h add ssh user@host [-p port] [-i identity] [-J jump] [-o Key=Value ...] [--name alias]
+func handleAddSSH(args []string, configPath string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: 55h add ssh user@host [-p port] [-i identity] [-J jump] [-o Key=Value ...] [--name alias]")
+	}
+
+	target := args[0]
+	var port, identity, jump, name string
+	var serverAliveInterval *int
+	var serverAliveCountMax *int
+	var forwardAgent *bool
+	var identitiesOnly *bool
+
+	for i := 1; i < len(args); i++ {
+		a := args[i]
+		switch a {
+		case "-p":
+			if i+1 >= len(args) {
+				return fmt.Errorf("-p requires a value")
+			}
+			port = args[i+1]
+			i++
+		case "-i":
+			if i+1 >= len(args) {
+				return fmt.Errorf("-i requires a value")
+			}
+			identity = args[i+1]
+			i++
+		case "-J":
+			if i+1 >= len(args) {
+				return fmt.Errorf("-J requires a value")
+			}
+			jump = args[i+1]
+			i++
+		case "-o":
+			if i+1 >= len(args) {
+				return fmt.Errorf("-o requires Key=Value")
+			}
+			kv := args[i+1]
+			i++
+			parts := strings.SplitN(kv, "=", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			key := strings.ToLower(strings.TrimSpace(parts[0]))
+			val := strings.TrimSpace(parts[1])
+			switch key {
+			case "forwardagent":
+				if b, ok := parseBoolVal(val); ok {
+					forwardAgent = b
+				}
+			case "identitiesonly":
+				if b, ok := parseBoolVal(val); ok {
+					identitiesOnly = b
+				}
+			case "serveraliveinterval":
+				if v, ok := parseIntVal(val); ok {
+					serverAliveInterval = v
+				}
+			case "serveralivecountmax":
+				if v, ok := parseIntVal(val); ok {
+					serverAliveCountMax = v
+				}
+			default:
+				// ignore unknown -o keys
+			}
+		case "--name":
+			if i+1 >= len(args) {
+				return fmt.Errorf("--name requires a value")
+			}
+			name = args[i+1]
+			i++
+		default:
+			return fmt.Errorf("unknown argument: %s", a)
+		}
+	}
+
+	// parse target user@host
+	var user, host string
+	if strings.Contains(target, "@") {
+		parts := strings.SplitN(target, "@", 2)
+		user = parts[0]
+		host = parts[1]
+	} else {
+		host = target
+	}
+
+	// Determine alias name: prompt if TTY and not provided, else require --name
+	fi, err := os.Stdin.Stat()
+	isTTY := err == nil && (fi.Mode()&os.ModeCharDevice) != 0
+
+	// Derive default alias from target: user@host if user provided, else host
+	defaultAlias := host
+	if user != "" && host != "" {
+		defaultAlias = fmt.Sprintf("%s@%s", user, host)
+	}
+
+	if name == "" {
+		if isTTY {
+			// Prompt showing suggestion; if user presses Enter, use default
+			if defaultAlias != "" {
+				// Show the default suggestion in grey when running in a TTY
+				// Display it as a placeholder-style value after the label.
+				// Use ANSI bright-black (90) for grey and reset after.
+				fmt.Printf("Alias: \x1b[90m%s\x1b[0m ", defaultAlias)
+			} else {
+				fmt.Print("Alias: ")
+			}
+			reader := bufio.NewReader(os.Stdin)
+			line, _ := reader.ReadString('\n')
+			entered := strings.TrimSpace(line)
+			if entered == "" {
+				if defaultAlias == "" {
+					return fmt.Errorf("alias required")
+				}
+				name = defaultAlias
+			} else {
+				name = entered
+			}
+		} else {
+			return fmt.Errorf("--name is required when stdin is not a TTY")
+		}
+	}
+
+	// Ensure parent dir exists
+	cfg := configPath
+	if cfg == "" {
+		return fmt.Errorf("unable to resolve config path")
+	}
+	if err := os.MkdirAll(filepath.Dir(cfg), 0755); err != nil {
+		return fmt.Errorf("failed to create parent dir: %v", err)
+	}
+
+	// Check for duplicate alias in existing config (including includes)
+	if entries, lerr := loadSSHConfig(cfg); lerr == nil {
+		for _, e := range entries {
+			for _, p := range e.Patterns {
+				if p == name {
+					return fmt.Errorf("alias %s already exists in %s", name, cfg)
+				}
+			}
+		}
+	}
+
+	// Build host block
+	var sb strings.Builder
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("Host %s\n", name))
+	if host != "" {
+		sb.WriteString(fmt.Sprintf("    HostName %s\n", host))
+	}
+	if user != "" {
+		sb.WriteString(fmt.Sprintf("    User %s\n", user))
+	}
+	if port != "" {
+		sb.WriteString(fmt.Sprintf("    Port %s\n", port))
+	}
+	if identity != "" {
+		sb.WriteString(fmt.Sprintf("    IdentityFile %s\n", identity))
+	}
+	if jump != "" {
+		sb.WriteString(fmt.Sprintf("    ProxyJump %s\n", jump))
+	}
+	if forwardAgent != nil {
+		sb.WriteString(fmt.Sprintf("    ForwardAgent %s\n", formatBoolYesNo(*forwardAgent)))
+	}
+	if identitiesOnly != nil {
+		sb.WriteString(fmt.Sprintf("    IdentitiesOnly %s\n", formatBoolYesNo(*identitiesOnly)))
+	}
+	if serverAliveInterval != nil {
+		sb.WriteString(fmt.Sprintf("    ServerAliveInterval %d\n", *serverAliveInterval))
+	}
+	if serverAliveCountMax != nil {
+		sb.WriteString(fmt.Sprintf("    ServerAliveCountMax %d\n", *serverAliveCountMax))
+	}
+
+	// Append to file
+	f, err := os.OpenFile(cfg, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open config file: %v", err)
+	}
+	defer f.Close()
+
+	if _, err := f.WriteString(sb.String()); err != nil {
+		return fmt.Errorf("failed to write config: %v", err)
+	}
+
+	return nil
 }
