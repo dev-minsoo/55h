@@ -18,10 +18,11 @@ go run .
 
 ## Controls
 - `q` quit
-- `r` reload SSH config
-- `/` focus search
+- `Enter` connect
+- `:` focus search
 - `t` cycle theme
 - `↑/↓` navigate
+- `?` help
 
 ## Config
 By default, reads `~/.ssh/config`.

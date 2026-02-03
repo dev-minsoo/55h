@@ -213,6 +213,9 @@ func main() {
 		case 't':
 			state.showThemeModal()
 			return nil
+		case '?':
+			state.showHelpModal()
+			return nil
 		case ':':
 			state.App.SetFocus(state.SearchInput)
 			return nil
@@ -483,6 +486,157 @@ func (state *AppState) showThemeModal() {
 	state.App.SetFocus(modal)
 }
 
+func (state *AppState) showHelpModal() {
+	state.ThemeModalOpen = true
+
+	theme := state.currentTheme()
+
+	// Two-column layout: left = Navigation, right = Actions
+	// Create per-column tables so we can align key left and description right individually
+	leftTable := tview.NewTable()
+	leftTable.SetSelectable(false, false)
+	leftTable.SetBorders(false)
+	leftTable.SetBackgroundColor(theme.PanelBg)
+
+	rightTable := tview.NewTable()
+	rightTable.SetSelectable(false, false)
+	rightTable.SetBorders(false)
+	rightTable.SetBackgroundColor(theme.PanelBg)
+
+	// Header row (two column titles)
+	leftHeader := tview.NewTextView()
+	leftHeader.SetDynamicColors(true)
+	leftHeader.SetTextAlign(tview.AlignLeft)
+	leftHeader.SetTextColor(theme.Accent)
+	leftHeader.SetText("Navigation")
+
+	rightHeader := tview.NewTextView()
+	rightHeader.SetDynamicColors(true)
+	rightHeader.SetTextAlign(tview.AlignRight)
+	rightHeader.SetTextColor(theme.Accent)
+	rightHeader.SetText("Actions")
+
+	// Content for columns
+	navRows := [][2]string{{"↑/↓", "move"}, {":", "search focus"}, {"Esc", "close"}}
+	actRows := [][2]string{{"Enter", "connect"}, {"t", "theme"}, {"q", "quit"}, {"?", "help"}}
+
+	// Populate left table
+	for i, r := range navRows {
+		k := tview.NewTableCell(r[0])
+		k.SetTextColor(theme.Text)
+		k.SetAlign(tview.AlignLeft)
+		k.SetSelectable(false)
+
+		d := tview.NewTableCell(r[1])
+		d.SetTextColor(theme.Text)
+		d.SetAlign(tview.AlignRight)
+		d.SetSelectable(false)
+
+		leftTable.SetCell(i, 0, k)
+		leftTable.SetCell(i, 1, d)
+	}
+
+	// Populate right table
+	for i, r := range actRows {
+		k := tview.NewTableCell(r[0])
+		k.SetTextColor(theme.Text)
+		k.SetAlign(tview.AlignLeft)
+		k.SetSelectable(false)
+
+		d := tview.NewTableCell(r[1])
+		d.SetTextColor(theme.Text)
+		d.SetAlign(tview.AlignRight)
+		d.SetSelectable(false)
+
+		rightTable.SetCell(i, 0, k)
+		rightTable.SetCell(i, 1, d)
+	}
+
+	// Horizontal divider under title
+	titleDivider := tview.NewTextView()
+	titleDivider.SetTextAlign(tview.AlignCenter)
+	titleDivider.SetText(strings.Repeat("─", 40))
+	titleDivider.SetTextColor(theme.Border)
+	titleDivider.SetBackgroundColor(theme.PanelBg)
+
+	// Rows area: place two tables side-by-side
+	rowsFlex := tview.NewFlex().SetDirection(tview.FlexColumn)
+	// Use fixed column widths so Actions column isn't pushed to the far right
+	// Keep widths modest to reduce gap between columns while fitting content
+	leftColWidth := 28
+	rightColWidth := 28
+	rowsFlex.AddItem(leftTable, leftColWidth, 0, false)
+	rowsFlex.AddItem(rightTable, rightColWidth, 0, false)
+
+	// Separator below rows
+	bottomDivider := tview.NewTextView()
+	bottomDivider.SetTextAlign(tview.AlignCenter)
+	bottomDivider.SetText(strings.Repeat("─", 40))
+	bottomDivider.SetTextColor(theme.Border)
+	bottomDivider.SetBackgroundColor(theme.PanelBg)
+
+	// Footer centered and muted
+	footerTV := tview.NewTextView()
+	footerTV.SetTextAlign(tview.AlignCenter)
+	footerTV.SetTextColor(theme.Muted)
+	footerTV.SetBackgroundColor(theme.PanelBg)
+	footerTV.SetText("Press Esc to close")
+
+	// Wrap in modal box with title 'KeyBindings'
+	modalBox := tview.NewFlex().SetDirection(tview.FlexRow)
+	modalBox.SetBorder(true)
+	modalBox.SetTitle(" KeyBindings ")
+	modalBox.SetTitleAlign(tview.AlignCenter)
+	modalBox.SetBackgroundColor(theme.PanelBg)
+	modalBox.SetBorderColor(theme.Accent)
+	modalBox.SetTitleColor(theme.Accent)
+
+	// Header row container for column titles - match fixed widths used above
+	headerFlex := tview.NewFlex().SetDirection(tview.FlexColumn)
+	headerFlex.AddItem(leftHeader, leftColWidth, 0, false)
+	headerFlex.AddItem(rightHeader, rightColWidth, 0, false)
+
+	// Assemble modal box
+	modalBox.AddItem(titleDivider, 1, 0, false)
+	modalBox.AddItem(headerFlex, 1, 0, false)
+	modalBox.AddItem(rowsFlex, 0, 1, true)
+	modalBox.AddItem(bottomDivider, 1, 0, false)
+	modalBox.AddItem(footerTV, 1, 0, false)
+
+	closeModal := func() {
+		state.Pages.RemovePage("help-modal")
+		state.ThemeModalOpen = false
+		state.App.SetFocus(state.HostList)
+	}
+
+	modalBox.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEsc:
+			closeModal()
+			return nil
+		}
+		if event.Rune() == 'q' {
+			closeModal()
+			return nil
+		}
+		return event
+	})
+
+	// Center modal on screen
+	modalWidth := 72
+	modalHeight := 12
+	modalFlex := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().SetDirection(tview.FlexColumn).
+			AddItem(nil, 0, 1, false).
+			AddItem(modalBox, modalWidth, 0, true).
+			AddItem(nil, 0, 1, false), modalHeight, 0, true).
+		AddItem(nil, 0, 1, false)
+
+	state.Pages.AddPage("help-modal", modalFlex, true, true)
+	state.App.SetFocus(modalBox)
+}
+
 func (state *AppState) connectSSH() {
 	if state.CurrentIndex < 0 || state.CurrentIndex >= len(state.Filtered) {
 		return
@@ -549,12 +703,13 @@ func (state *AppState) applyTheme(theme AppTheme) {
 }
 
 func (state *AppState) updateFooter() {
-	footer := fmt.Sprintf("[::b][%s]q[-:-:-] quit  [%s]:[-:-:-] search  [%s]t[-:-:-] theme  [%s]↑/↓[-:-:-] navigate  [%s]enter[-:-:-] connect",
+	footer := fmt.Sprintf("[::b][%s]q[-:-:-] quit  [%s]:[-:-:-] search  [%s]t[-:-:-] theme  [%s]↑/↓[-:-:-] navigate  [%s]enter[-:-:-] connect  [%s]?[-:-:-] help",
 		state.currentTheme().MarkupSuccess,
 		state.currentTheme().MarkupAccent,
 		state.currentTheme().MarkupAccent,
 		state.currentTheme().MarkupAccent,
 		state.currentTheme().MarkupSuccess,
+		state.currentTheme().MarkupAccent,
 	)
 	state.Footer.SetText(footer)
 }
