@@ -424,9 +424,12 @@ func (state *AppState) showThemeModal() {
 		return event
 	})
 
-	// Create centered modal container
-	modalWidth := 50
-	modalHeight := len(state.ThemeCatalog) + 2
+	// Create centered modal container (larger so items don't clip)
+	modalWidth := 70
+	modalHeight := len(state.ThemeCatalog) + 4
+	if modalHeight < 10 {
+		modalHeight = 10
+	}
 
 	modalFlex := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(nil, 0, 1, false).
@@ -526,7 +529,7 @@ func getAppConfigPath() string {
 		return ""
 	}
 	configDir := filepath.Join(home, ".config", "55h")
-	return filepath.Join(configDir, "config.json")
+	return filepath.Join(configDir, "config.yml")
 }
 
 func (state *AppState) loadAppConfig() {
@@ -535,23 +538,89 @@ func (state *AppState) loadAppConfig() {
 		return
 	}
 
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return
+	// Try multiple candidate files for backward compatibility:
+	//  - config.yml (new)
+	//  - config (old)
+	//  - config.json (legacy JSON)
+	configDir := filepath.Dir(configPath)
+	candidates := []string{
+		configPath,
+		filepath.Join(configDir, "config"),
+		filepath.Join(configDir, "config.json"),
 	}
 
-	var config AppConfig
-	if err := json.Unmarshal(data, &config); err != nil {
-		return
-	}
-
-	// Find theme by name
-	for i, theme := range state.ThemeCatalog {
-		if theme.Name == config.ThemeName {
-			state.ThemeIndex = i
+	var data []byte
+	var err error
+	var used string
+	for _, p := range candidates {
+		data, err = os.ReadFile(p)
+		if err == nil {
+			used = p
 			break
 		}
 	}
+	if err != nil || len(data) == 0 {
+		return
+	}
+
+	// Attempt JSON if file looks like JSON or has .json extension
+	trimmed := strings.TrimSpace(string(data))
+	var found string
+	if strings.HasSuffix(used, ".json") || strings.HasPrefix(trimmed, "{") {
+		var obj map[string]interface{}
+		if jerr := json.Unmarshal(data, &obj); jerr == nil {
+			// support keys: theme, theme_name
+			if v, ok := obj["theme"]; ok {
+				if s, ok := v.(string); ok {
+					found = s
+				}
+			}
+			if found == "" {
+				if v, ok := obj["theme_name"]; ok {
+					if s, ok := v.(string); ok {
+						found = s
+					}
+				}
+			}
+		}
+	} else {
+		// Tiny key/value parser: look for lines like `theme: Value`, ignore blank/comment lines
+		scanner := bufio.NewScanner(strings.NewReader(string(data)))
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" {
+				continue
+			}
+			if strings.HasPrefix(line, "#") {
+				// allow comments, skip
+				continue
+			}
+			// split on first ':'
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			key := strings.ToLower(strings.TrimSpace(parts[0]))
+			val := strings.TrimSpace(parts[1])
+			if key == "theme" {
+				found = val
+				break
+			}
+		}
+	}
+
+	if found == "" {
+		return
+	}
+
+	// Find theme by name (case-sensitive match as names are defined)
+	for i, theme := range state.ThemeCatalog {
+		if theme.Name == found {
+			state.ThemeIndex = i
+			return
+		}
+	}
+	// if not found, leave ThemeIndex as-is (fallback)
 }
 
 func (state *AppState) saveAppConfig() {
@@ -566,16 +635,20 @@ func (state *AppState) saveAppConfig() {
 		return
 	}
 
-	config := AppConfig{
-		ThemeName: state.currentTheme().Name,
-	}
-
-	data, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
+	// Write simple key/value config with an English comment describing the setting
+	// Format:
+	// # Theme name for UI colors
+	// theme: <Name>
+	content := fmt.Sprintf("# Theme name for UI colors\ntheme: %s\n", state.currentTheme().Name)
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		// If we failed to write the new config, do not remove legacy files.
 		return
 	}
 
-	_ = os.WriteFile(configPath, data, 0644)
+	// After successfully writing config.yml, attempt to remove legacy files
+	// from the same config directory. Ignore any errors from removal.
+	_ = os.Remove(filepath.Join(configDir, "config"))
+	_ = os.Remove(filepath.Join(configDir, "config.json"))
 }
 
 func shortenPath(path string, max int) string {
