@@ -226,7 +226,7 @@ func setupHostList(hostList *tview.List) {
 	hostList.ShowSecondaryText(false)
 	hostList.SetBorder(true)
 	hostList.SetTitle(" Hosts ")
-	hostList.SetHighlightFullLine(false)
+	hostList.SetHighlightFullLine(true)
 }
 
 func setupDetailTable(detailTable *tview.Table) {
@@ -347,16 +347,15 @@ func (state *AppState) applyTheme(theme AppTheme) {
 	state.Footer.SetBackgroundColor(theme.FooterBg)
 	state.updateFooter()
 
-	state.SearchInput.SetLabelColor(theme.Accent)
-	state.SearchInput.SetFieldTextColor(theme.Text)
-	state.SearchInput.SetPlaceholderTextColor(theme.Muted)
-	state.SearchInput.SetFieldBackgroundColor(theme.PanelBg)
+	state.SearchInput.SetLabelStyle(tcell.StyleDefault.Foreground(theme.Accent).Background(theme.PanelBg))
+	state.SearchInput.SetFieldStyle(tcell.StyleDefault.Foreground(theme.Text).Background(theme.PanelBg))
+	state.SearchInput.SetPlaceholderStyle(tcell.StyleDefault.Foreground(theme.Muted).Background(theme.PanelBg))
 	state.SearchInput.SetBackgroundColor(theme.PanelBg)
 	state.SearchInput.SetBorderColor(theme.Border)
 	state.SearchInput.SetTitleColor(theme.Accent)
 
 	state.HostList.SetBorderColor(theme.Border)
-	state.HostList.SetMainTextColor(theme.Text)
+	state.HostList.SetMainTextStyle(tcell.StyleDefault.Foreground(theme.Text).Background(theme.PanelBg))
 	state.HostList.SetSecondaryTextColor(theme.Muted)
 	state.HostList.SetSelectedBackgroundColor(theme.Accent)
 	state.HostList.SetSelectedTextColor(theme.Bg)
