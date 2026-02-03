@@ -2,11 +2,14 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 	"unicode"
 
@@ -60,25 +63,31 @@ func (entry HostEntry) DisplayText() (string, string) {
 	return primary, ""
 }
 
+type AppConfig struct {
+	ThemeName string `json:"theme_name"`
+}
+
 type AppState struct {
-	App           *tview.Application
-	Root          *tview.Flex
-	Header        *tview.Flex
-	HeaderLogo    *tview.TextView
-	HeaderMeta    *tview.TextView
-	Footer        *tview.TextView
-	SearchInput   *tview.InputField
-	HostList      *tview.List
-	DetailTable   *tview.Table
-	ConfigPath    string
-	Entries       []HostEntry
-	Filtered      []HostEntry
-	CurrentIndex  int
-	ThemeIndex    int
-	ThemeCatalog  []AppTheme
-	CurrentFilter string
-	LastUpdated   time.Time
-	LastLoadErr   error
+	App            *tview.Application
+	Pages          *tview.Pages
+	Root           *tview.Flex
+	Header         *tview.Flex
+	HeaderLogo     *tview.TextView
+	HeaderMeta     *tview.TextView
+	Footer         *tview.TextView
+	SearchInput    *tview.InputField
+	HostList       *tview.List
+	DetailTable    *tview.Table
+	ConfigPath     string
+	Entries        []HostEntry
+	Filtered       []HostEntry
+	CurrentIndex   int
+	ThemeIndex     int
+	ThemeCatalog   []AppTheme
+	CurrentFilter  string
+	LastUpdated    time.Time
+	LastLoadErr    error
+	ThemeModalOpen bool
 }
 
 const (
@@ -90,6 +99,7 @@ func main() {
 	configPath := resolveConfigPath()
 
 	app := tview.NewApplication()
+	pages := tview.NewPages()
 	root := tview.NewFlex().SetDirection(tview.FlexRow)
 	content := tview.NewFlex().SetDirection(tview.FlexColumn)
 	header := tview.NewFlex().SetDirection(tview.FlexColumn)
@@ -101,22 +111,27 @@ func main() {
 	detailTable := tview.NewTable()
 
 	state := &AppState{
-		App:          app,
-		Root:         root,
-		Header:       header,
-		HeaderLogo:   headerLogo,
-		HeaderMeta:   headerMeta,
-		Footer:       footer,
-		SearchInput:  searchInput,
-		HostList:     hostList,
-		DetailTable:  detailTable,
-		ConfigPath:   configPath,
-		Entries:      nil,
-		Filtered:     nil,
-		CurrentIndex: 0,
-		ThemeCatalog: DefaultThemes(),
-		ThemeIndex:   0,
+		App:            app,
+		Pages:          pages,
+		Root:           root,
+		Header:         header,
+		HeaderLogo:     headerLogo,
+		HeaderMeta:     headerMeta,
+		Footer:         footer,
+		SearchInput:    searchInput,
+		HostList:       hostList,
+		DetailTable:    detailTable,
+		ConfigPath:     configPath,
+		Entries:        nil,
+		Filtered:       nil,
+		CurrentIndex:   0,
+		ThemeCatalog:   DefaultThemes(),
+		ThemeIndex:     0,
+		ThemeModalOpen: false,
 	}
+
+	// Load saved theme
+	state.loadAppConfig()
 
 	setupHeader(header, headerLogo, headerMeta)
 	setupFooter(footer)
@@ -135,30 +150,44 @@ func main() {
 	root.AddItem(content, 0, 1, true)
 	root.AddItem(footer, 3, 0, false)
 
+	pages.AddPage("main", root, true, true)
+
 	state.applyTheme(state.ThemeCatalog[state.ThemeIndex])
 	state.reload()
 
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		// If theme modal is open, don't process global shortcuts
+		if state.ThemeModalOpen {
+			return event
+		}
+
+		// Check if SearchInput has focus - only allow Escape to exit search mode
+		searchFocused := state.App.GetFocus() == state.SearchInput
+
 		switch event.Key() {
-		case tcell.KeyCtrlR:
-			state.reload()
-			return nil
 		case tcell.KeyEsc:
 			state.App.SetFocus(state.HostList)
 			return nil
+		case tcell.KeyEnter:
+			if !searchFocused {
+				state.connectSSH()
+				return nil
+			}
+		}
+
+		// Skip rune-based commands when search input is focused
+		if searchFocused {
+			return event
 		}
 
 		switch event.Rune() {
 		case 'q':
 			app.Stop()
 			return nil
-		case 'r':
-			state.reload()
-			return nil
 		case 't':
-			state.cycleTheme()
+			state.showThemeModal()
 			return nil
-		case '/':
+		case ':':
 			state.App.SetFocus(state.SearchInput)
 			return nil
 		}
@@ -166,7 +195,7 @@ func main() {
 		return event
 	})
 
-	if err := app.SetRoot(root, true).EnableMouse(true).Run(); err != nil {
+	if err := app.SetRoot(pages, true).EnableMouse(true).Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
@@ -325,11 +354,121 @@ func (state *AppState) renderDetails(index int) {
 	}
 }
 
-func (state *AppState) cycleTheme() {
-	state.ThemeIndex = (state.ThemeIndex + 1) % len(state.ThemeCatalog)
-	state.applyTheme(state.ThemeCatalog[state.ThemeIndex])
-	state.updateFooter()
-	state.updateHeaderMeta(state.LastUpdated, state.LastLoadErr)
+func (state *AppState) showThemeModal() {
+	state.ThemeModalOpen = true
+	originalThemeIndex := state.ThemeIndex
+
+	modal := tview.NewList()
+	modal.SetBorder(true)
+	modal.SetTitle(" Select Theme (↑/↓ preview, Enter confirm, Esc cancel) ")
+	modal.SetTitleAlign(tview.AlignCenter)
+	modal.ShowSecondaryText(false)
+	modal.SetHighlightFullLine(true)
+
+	// Style the modal with current theme
+	updateModalStyle := func() {
+		theme := state.currentTheme()
+		modal.SetBackgroundColor(theme.PanelBg)
+		modal.SetBorderColor(theme.Accent)
+		modal.SetTitleColor(theme.Accent)
+		modal.SetMainTextStyle(tcell.StyleDefault.Foreground(theme.Text).Background(theme.PanelBg))
+		modal.SetSelectedBackgroundColor(theme.Accent)
+		modal.SetSelectedTextColor(theme.Bg)
+	}
+	updateModalStyle()
+
+	for _, t := range state.ThemeCatalog {
+		modal.AddItem(t.Name, "", 0, nil)
+	}
+
+	modal.SetCurrentItem(state.ThemeIndex)
+
+	// Preview theme when selection changes
+	modal.SetChangedFunc(func(index int, mainText string, secondaryText string, shortcut rune) {
+		state.ThemeIndex = index
+		state.applyTheme(state.ThemeCatalog[index])
+		state.updateFooter()
+		state.updateHeaderMeta(state.LastUpdated, state.LastLoadErr)
+		updateModalStyle()
+	})
+
+	closeModal := func(save bool) {
+		if !save {
+			// Restore original theme
+			state.ThemeIndex = originalThemeIndex
+			state.applyTheme(state.ThemeCatalog[originalThemeIndex])
+			state.updateFooter()
+			state.updateHeaderMeta(state.LastUpdated, state.LastLoadErr)
+		} else {
+			// Save theme to config
+			state.saveAppConfig()
+		}
+		state.Pages.RemovePage("theme-modal")
+		state.ThemeModalOpen = false
+		state.App.SetFocus(state.HostList)
+	}
+
+	modal.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEsc:
+			closeModal(false)
+			return nil
+		case tcell.KeyEnter:
+			closeModal(true)
+			return nil
+		}
+		if event.Rune() == 'q' {
+			closeModal(false)
+			return nil
+		}
+		return event
+	})
+
+	// Create centered modal container
+	modalWidth := 50
+	modalHeight := len(state.ThemeCatalog) + 2
+
+	modalFlex := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().SetDirection(tview.FlexColumn).
+			AddItem(nil, 0, 1, false).
+			AddItem(modal, modalWidth, 0, true).
+			AddItem(nil, 0, 1, false), modalHeight, 0, true).
+		AddItem(nil, 0, 1, false)
+
+	state.Pages.AddPage("theme-modal", modalFlex, true, true)
+	state.App.SetFocus(modal)
+}
+
+func (state *AppState) connectSSH() {
+	if state.CurrentIndex < 0 || state.CurrentIndex >= len(state.Filtered) {
+		return
+	}
+
+	entry := state.Filtered[state.CurrentIndex]
+	if len(entry.Patterns) == 0 {
+		return
+	}
+
+	// Use the first pattern as the host alias for ssh command
+	host := entry.Patterns[0]
+
+	// Stop the TUI application
+	state.App.Stop()
+
+	// Find ssh binary path
+	sshPath, err := exec.LookPath("ssh")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ssh not found: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Replace current process with ssh using syscall.Exec
+	// This gives full control to ssh including TTY handling
+	if err := syscall.Exec(sshPath, []string{"ssh", host}, os.Environ()); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to exec ssh: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 func (state *AppState) applyTheme(theme AppTheme) {
@@ -367,18 +506,76 @@ func (state *AppState) applyTheme(theme AppTheme) {
 }
 
 func (state *AppState) updateFooter() {
-	footer := fmt.Sprintf("[::b][%s]q[-:-:-] quit  [%s]r[-:-:-] reload  [%s]/[-:-:-] search  [%s]t[-:-:-] theme  [%s]↑/↓[-:-:-] navigate",
+	footer := fmt.Sprintf("[::b][%s]q[-:-:-] quit  [%s]:[-:-:-] search  [%s]t[-:-:-] theme  [%s]↑/↓[-:-:-] navigate  [%s]enter[-:-:-] connect",
 		state.currentTheme().MarkupSuccess,
-		state.currentTheme().MarkupWarning,
 		state.currentTheme().MarkupAccent,
 		state.currentTheme().MarkupAccent,
 		state.currentTheme().MarkupAccent,
+		state.currentTheme().MarkupSuccess,
 	)
 	state.Footer.SetText(footer)
 }
 
 func (state *AppState) currentTheme() AppTheme {
 	return state.ThemeCatalog[state.ThemeIndex]
+}
+
+func getAppConfigPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	configDir := filepath.Join(home, ".config", "55h")
+	return filepath.Join(configDir, "config.json")
+}
+
+func (state *AppState) loadAppConfig() {
+	configPath := getAppConfigPath()
+	if configPath == "" {
+		return
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return
+	}
+
+	var config AppConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return
+	}
+
+	// Find theme by name
+	for i, theme := range state.ThemeCatalog {
+		if theme.Name == config.ThemeName {
+			state.ThemeIndex = i
+			break
+		}
+	}
+}
+
+func (state *AppState) saveAppConfig() {
+	configPath := getAppConfigPath()
+	if configPath == "" {
+		return
+	}
+
+	// Ensure config directory exists
+	configDir := filepath.Dir(configPath)
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return
+	}
+
+	config := AppConfig{
+		ThemeName: state.currentTheme().Name,
+	}
+
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return
+	}
+
+	_ = os.WriteFile(configPath, data, 0644)
 }
 
 func shortenPath(path string, max int) string {
