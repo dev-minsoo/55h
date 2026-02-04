@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -491,8 +492,46 @@ func (state *AppState) showHelpModal() {
 
 	theme := state.currentTheme()
 
-	// Two-column layout: left = Navigation, right = Actions
-	// Create per-column tables so we can align key left and description right individually
+	// Disable mouse while help modal is open to block background interaction
+	state.App.EnableMouse(false)
+
+	// Build rune-aware padding for chips
+	padCenter := func(s string, w int) string {
+		rl := utf8.RuneCountInString(s)
+		if rl >= w {
+			return s
+		}
+		total := w - rl
+		left := total / 2
+		right := total - left
+		return strings.Repeat(" ", left) + s + strings.Repeat(" ", right)
+	}
+
+	// Key chip builder
+	chipWidth := 10
+	makeKeyCell := func(text string) *tview.TableCell {
+		display := padCenter(text, chipWidth)
+		c := tview.NewTableCell(display)
+		c.SetTextColor(theme.SelectFg)
+		c.SetBackgroundColor(theme.SelectBg)
+		c.SetAlign(tview.AlignCenter)
+		c.SetSelectable(false)
+		c.SetAttributes(tcell.AttrBold)
+		c.SetMaxWidth(chipWidth)
+		return c
+	}
+
+	makeDescCell := func(text string) *tview.TableCell {
+		c := tview.NewTableCell(text)
+		c.SetTextColor(theme.Text)
+		// Center-align description and allow it to expand to fill column
+		c.SetAlign(tview.AlignCenter)
+		c.SetSelectable(false)
+		c.SetExpansion(1)
+		return c
+	}
+
+	// Left and right tables (each: key chip + description)
 	leftTable := tview.NewTable()
 	leftTable.SetSelectable(false, false)
 	leftTable.SetBorders(false)
@@ -503,107 +542,112 @@ func (state *AppState) showHelpModal() {
 	rightTable.SetBorders(false)
 	rightTable.SetBackgroundColor(theme.PanelBg)
 
-	// Header row (two column titles)
-	leftHeader := tview.NewTextView()
-	leftHeader.SetDynamicColors(true)
-	leftHeader.SetTextAlign(tview.AlignLeft)
-	leftHeader.SetTextColor(theme.Accent)
-	leftHeader.SetText("Navigation")
-
-	rightHeader := tview.NewTextView()
-	rightHeader.SetDynamicColors(true)
-	rightHeader.SetTextAlign(tview.AlignRight)
-	rightHeader.SetTextColor(theme.Accent)
-	rightHeader.SetText("Actions")
-
-	// Content for columns
+	// Content rows (unchanged texts)
 	navRows := [][2]string{{"↑/↓", "move"}, {":", "search focus"}, {"Esc", "close"}}
-	actRows := [][2]string{{"Enter", "connect"}, {"t", "theme"}, {"q", "quit"}, {"?", "help"}}
+	actRows := [][2]string{{"Enter", "connect"}, {"t", "theme"}, {"Ctrl+C", "quit"}, {"?", "help"}}
 
-	// Populate left table
-	for i, r := range navRows {
-		k := tview.NewTableCell(r[0])
-		k.SetTextColor(theme.Text)
-		k.SetAlign(tview.AlignLeft)
-		k.SetSelectable(false)
+	// Add small header TextViews above each table (Navigation / Actions)
+	navHeaderTV := tview.NewTextView()
+	navHeaderTV.SetDynamicColors(true)
+	navHeaderTV.SetTextAlign(tview.AlignCenter)
+	navHeaderTV.SetText(fmt.Sprintf("[::b][%s]Navigation[-:-:-]", state.currentTheme().MarkupAccent))
+	navHeaderTV.SetBackgroundColor(theme.PanelBg)
 
-		d := tview.NewTableCell(r[1])
-		d.SetTextColor(theme.Text)
-		d.SetAlign(tview.AlignRight)
-		d.SetSelectable(false)
+	actHeaderTV := tview.NewTextView()
+	actHeaderTV.SetDynamicColors(true)
+	actHeaderTV.SetTextAlign(tview.AlignCenter)
+	actHeaderTV.SetText(fmt.Sprintf("[::b][%s]Actions[-:-:-]", state.currentTheme().MarkupAccent))
+	actHeaderTV.SetBackgroundColor(theme.PanelBg)
 
-		leftTable.SetCell(i, 0, k)
-		leftTable.SetCell(i, 1, d)
+	modalWidth := 70
+	dividerLength := modalWidth - 4
+
+	// Build per-column vertical containers (tables only); headers will be in a shared header row
+	leftCol := tview.NewFlex().SetDirection(tview.FlexRow)
+	leftCol.AddItem(leftTable, 0, 1, false)
+
+	rightCol := tview.NewFlex().SetDirection(tview.FlexRow)
+	rightCol.AddItem(rightTable, 0, 1, false)
+
+	// Populate content rows starting at row 0
+	maxRows := len(navRows)
+	if len(actRows) > maxRows {
+		maxRows = len(actRows)
 	}
+	for i := 0; i < maxRows; i++ {
+		rowIndex := i
+		if i < len(navRows) {
+			leftTable.SetCell(rowIndex, 0, makeKeyCell(navRows[i][0]))
+			leftTable.SetCell(rowIndex, 1, makeDescCell(navRows[i][1]))
+		} else {
+			leftTable.SetCell(rowIndex, 0, tview.NewTableCell(" ").SetBackgroundColor(theme.PanelBg))
+			leftTable.SetCell(rowIndex, 1, tview.NewTableCell(" ").SetBackgroundColor(theme.PanelBg))
+		}
 
-	// Populate right table
-	for i, r := range actRows {
-		k := tview.NewTableCell(r[0])
-		k.SetTextColor(theme.Text)
-		k.SetAlign(tview.AlignLeft)
-		k.SetSelectable(false)
-
-		d := tview.NewTableCell(r[1])
-		d.SetTextColor(theme.Text)
-		d.SetAlign(tview.AlignRight)
-		d.SetSelectable(false)
-
-		rightTable.SetCell(i, 0, k)
-		rightTable.SetCell(i, 1, d)
+		if i < len(actRows) {
+			rightTable.SetCell(rowIndex, 0, makeKeyCell(actRows[i][0]))
+			rightTable.SetCell(rowIndex, 1, makeDescCell(actRows[i][1]))
+		} else {
+			rightTable.SetCell(rowIndex, 0, tview.NewTableCell(" ").SetBackgroundColor(theme.PanelBg))
+			rightTable.SetCell(rowIndex, 1, tview.NewTableCell(" ").SetBackgroundColor(theme.PanelBg))
+		}
 	}
-
-	// Horizontal divider under title
-	titleDivider := tview.NewTextView()
-	titleDivider.SetTextAlign(tview.AlignCenter)
-	titleDivider.SetText(strings.Repeat("─", 40))
-	titleDivider.SetTextColor(theme.Border)
-	titleDivider.SetBackgroundColor(theme.PanelBg)
-
-	// Rows area: place two tables side-by-side
-	rowsFlex := tview.NewFlex().SetDirection(tview.FlexColumn)
-	// Use fixed column widths so Actions column isn't pushed to the far right
-	// Keep widths modest to reduce gap between columns while fitting content
-	leftColWidth := 28
-	rightColWidth := 28
-	rowsFlex.AddItem(leftTable, leftColWidth, 0, false)
-	rowsFlex.AddItem(rightTable, rightColWidth, 0, false)
-
-	// Separator below rows
-	bottomDivider := tview.NewTextView()
-	bottomDivider.SetTextAlign(tview.AlignCenter)
-	bottomDivider.SetText(strings.Repeat("─", 40))
-	bottomDivider.SetTextColor(theme.Border)
-	bottomDivider.SetBackgroundColor(theme.PanelBg)
 
 	// Footer centered and muted
 	footerTV := tview.NewTextView()
 	footerTV.SetTextAlign(tview.AlignCenter)
 	footerTV.SetTextColor(theme.Muted)
 	footerTV.SetBackgroundColor(theme.PanelBg)
-	footerTV.SetText("Press Esc to close")
+	footerTV.SetText("Esc to close")
 
-	// Wrap in modal box with title 'KeyBindings'
+	// Divider above footer as its own full-width TextView
+	dividerTV := tview.NewTextView()
+	dividerTV.SetTextAlign(tview.AlignCenter)
+	dividerTV.SetTextColor(theme.Border)
+	dividerTV.SetBackgroundColor(theme.PanelBg)
+	dividerTV.SetText(strings.Repeat("─", dividerLength))
+
+	// Shared header row for both columns (Navigation / Actions)
+	headerRow := tview.NewFlex().SetDirection(tview.FlexColumn)
+	headerRow.AddItem(navHeaderTV, 0, 1, false)
+	headerRow.AddItem(actHeaderTV, 0, 1, false)
+
+	// Single full-width divider under headers (matches footer divider length)
+	headerDivider := tview.NewTextView()
+	headerDivider.SetTextAlign(tview.AlignCenter)
+	headerDivider.SetTextColor(theme.Border)
+	headerDivider.SetBackgroundColor(theme.PanelBg)
+	headerDivider.SetText(strings.Repeat("─", dividerLength))
+
+	// Wrap in modal box with title 'Key Bindings'
 	modalBox := tview.NewFlex().SetDirection(tview.FlexRow)
 	modalBox.SetBorder(true)
-	modalBox.SetTitle(" KeyBindings ")
+	modalBox.SetTitle(" Key Bindings ")
 	modalBox.SetTitleAlign(tview.AlignCenter)
 	modalBox.SetBackgroundColor(theme.PanelBg)
-	modalBox.SetBorderColor(theme.Accent)
-	modalBox.SetTitleColor(theme.Accent)
+	modalBox.SetBorderColor(theme.Border)
+	modalBox.SetTitleColor(theme.Text)
 
-	// Header row container for column titles - match fixed widths used above
-	headerFlex := tview.NewFlex().SetDirection(tview.FlexColumn)
-	headerFlex.AddItem(leftHeader, leftColWidth, 0, false)
-	headerFlex.AddItem(rightHeader, rightColWidth, 0, false)
+	// Columns container (50:50) with a small gutter
+	columns := tview.NewFlex().SetDirection(tview.FlexColumn)
+	// Two equal-width columns (no visible gutter between them)
+	columns.AddItem(leftCol, 0, 1, false)
+	columns.AddItem(rightCol, 0, 1, false)
 
-	// Assemble modal box
-	modalBox.AddItem(titleDivider, 1, 0, false)
-	modalBox.AddItem(headerFlex, 1, 0, false)
-	modalBox.AddItem(rowsFlex, 0, 1, true)
-	modalBox.AddItem(bottomDivider, 1, 0, false)
+	// Assemble modal: header row, header divider, columns, divider, footer (reduced top padding)
+	modalBox.AddItem(headerRow, 1, 0, false)
+	modalBox.AddItem(headerDivider, 1, 0, false)
+	// small breathing space between headers and content
+	paddingMid := tview.NewTextView()
+	paddingMid.SetBackgroundColor(theme.PanelBg)
+	modalBox.AddItem(columns, 0, 1, true)
+	modalBox.AddItem(paddingMid, 1, 0, false)
+	modalBox.AddItem(dividerTV, 1, 0, false)
 	modalBox.AddItem(footerTV, 1, 0, false)
 
 	closeModal := func() {
+		// Re-enable mouse and close modal
+		state.App.EnableMouse(true)
 		state.Pages.RemovePage("help-modal")
 		state.ThemeModalOpen = false
 		state.App.SetFocus(state.HostList)
@@ -615,16 +659,11 @@ func (state *AppState) showHelpModal() {
 			closeModal()
 			return nil
 		}
-		if event.Rune() == 'q' {
-			closeModal()
-			return nil
-		}
 		return event
 	})
 
 	// Center modal on screen
-	modalWidth := 72
-	modalHeight := 12
+	modalHeight := 6 + maxRows
 	modalFlex := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(nil, 0, 1, false).
 		AddItem(tview.NewFlex().SetDirection(tview.FlexColumn).
