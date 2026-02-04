@@ -785,7 +785,7 @@ func (state *AppState) applyTheme(theme AppTheme) {
 }
 
 func (state *AppState) updateFooter() {
-	footer := fmt.Sprintf("[::b][%s]q[-:-:-] quit  [%s]:[-:-:-] search  [%s]t[-:-:-] theme  [%s]↑/↓[-:-:-] navigate  [%s]enter[-:-:-] connect  [%s]?[-:-:-] help",
+	footer := fmt.Sprintf("[::b][%s]Ctrl+C[-:-:-] quit  [%s]:[-:-:-] search  [%s]t[-:-:-] theme  [%s]↑/↓[-:-:-] navigate  [%s]enter[-:-:-] connect  [%s]?[-:-:-] help",
 		state.currentTheme().MarkupSuccess,
 		state.currentTheme().MarkupAccent,
 		state.currentTheme().MarkupAccent,
