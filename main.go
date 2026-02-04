@@ -30,6 +30,7 @@ type HostEntry struct {
 	ServerAliveCountMax *int
 	ForwardAgent        *bool
 	IdentitiesOnly      *bool
+	SourcePath          string
 }
 
 func (entry HostEntry) SearchText() string {
@@ -71,14 +72,19 @@ func (entry HostEntry) DisplayText() (string, string) {
 		primary = fmt.Sprintf("%s  %s", primary, entry.User)
 	}
 
-	if entry.Port != "" {
-		primary = fmt.Sprintf("%s :%s", primary, entry.Port)
-	}
-	if entry.ProxyJump != "" {
-		primary = fmt.Sprintf("%s via %s", primary, entry.ProxyJump)
-	}
+	// Keep main display concise: only alias and user@host
 
 	return primary, ""
+}
+
+// accessKey builds a stable key for LastAccess lookup/storage.
+// It includes: alias (Patterns[0]), HostName, User, Port — empty strings when missing.
+func accessKey(entry HostEntry) string {
+	alias := ""
+	if len(entry.Patterns) > 0 {
+		alias = entry.Patterns[0]
+	}
+	return fmt.Sprintf("%s|%s|%s|%s", alias, entry.HostName, entry.User, entry.Port)
 }
 
 type AppConfig struct {
@@ -106,6 +112,7 @@ type AppState struct {
 	LastUpdated    time.Time
 	LastLoadErr    error
 	ThemeModalOpen bool
+	LastAccess     map[string]string
 }
 
 const (
@@ -159,6 +166,7 @@ func main() {
 
 	// Load saved theme
 	state.loadAppConfig()
+	state.loadAccessLog()
 
 	setupHeader(header, headerLogo, headerMeta)
 	setupFooter(footer)
@@ -307,12 +315,38 @@ func (state *AppState) applyFilter(query string) {
 	state.Filtered = nil
 	state.CurrentIndex = 0
 	state.HostList.Clear()
+	basePath := state.ConfigPath
+	if abs, err := filepath.Abs(basePath); err == nil {
+		basePath = abs
+	}
+	isIncluded := func(entry HostEntry) bool {
+		if entry.SourcePath == "" {
+			return false
+		}
+		src := entry.SourcePath
+		if abs, err := filepath.Abs(src); err == nil {
+			src = abs
+		}
+		return filepath.Clean(src) != filepath.Clean(basePath)
+	}
+	baseEntries := []HostEntry{}
+	includedEntries := []HostEntry{}
 
 	for _, entry := range state.Entries {
 		if !fuzzyMatch(query, entry.SearchText()) {
 			continue
 		}
-		state.Filtered = append(state.Filtered, entry)
+		if isIncluded(entry) {
+			includedEntries = append(includedEntries, entry)
+		} else {
+			baseEntries = append(baseEntries, entry)
+		}
+	}
+	state.Filtered = append(state.Filtered, baseEntries...)
+	if len(includedEntries) > 0 {
+		state.Filtered = append(state.Filtered, includedEntries...)
+	}
+	for _, entry := range state.Filtered {
 		mainText, secondary := entry.DisplayText()
 		state.HostList.AddItem(mainText, secondary, 0, nil)
 	}
@@ -365,26 +399,58 @@ func (state *AppState) renderDetails(index int) {
 	state.DetailTable.Clear()
 	state.DetailTable.SetTitle(fmt.Sprintf(" Details: %s ", strings.Join(entry.Patterns, ", ")))
 
+	// Always show all supported detail keys. Use empty string for missing values.
+	srvAliveInterval := ""
+	if entry.ServerAliveInterval != nil {
+		srvAliveInterval = fmt.Sprintf("%d", *entry.ServerAliveInterval)
+	}
+	srvAliveCountMax := ""
+	if entry.ServerAliveCountMax != nil {
+		srvAliveCountMax = fmt.Sprintf("%d", *entry.ServerAliveCountMax)
+	}
+	forwardAgent := ""
+	if entry.ForwardAgent != nil {
+		forwardAgent = fmt.Sprintf("%t", *entry.ForwardAgent)
+	}
+	identitiesOnly := ""
+	if entry.IdentitiesOnly != nil {
+		identitiesOnly = fmt.Sprintf("%t", *entry.IdentitiesOnly)
+	}
+
+	includedFrom := ""
+	if entry.SourcePath != "" {
+		src := entry.SourcePath
+		if abs, err := filepath.Abs(src); err == nil {
+			src = abs
+		}
+		base := state.ConfigPath
+		if abs, err := filepath.Abs(base); err == nil {
+			base = abs
+		}
+		if filepath.Clean(src) != filepath.Clean(base) {
+			includedFrom = src
+		}
+	}
+	lastAccess := ""
+	// Lookup last access using a composite key to avoid collisions between aliases
+	key := accessKey(entry)
+	if ts, ok := state.LastAccess[key]; ok {
+		lastAccess = ts
+	}
 	rows := [][2]string{
 		{"HostName", entry.HostName},
 		{"User", entry.User},
 		{"Port", entry.Port},
 		{"IdentityFile", entry.IdentityFile},
 		{"ProxyJump", entry.ProxyJump},
+		{"ServerAliveInterval", srvAliveInterval},
+		{"ServerAliveCountMax", srvAliveCountMax},
+		{"ForwardAgent", forwardAgent},
+		{"IdentitiesOnly", identitiesOnly},
+		{"LastLoginAt", lastAccess},
 	}
-
-	// Append optional fields when present
-	if entry.ServerAliveInterval != nil {
-		rows = append(rows, [2]string{"ServerAliveInterval", fmt.Sprintf("%d", *entry.ServerAliveInterval)})
-	}
-	if entry.ServerAliveCountMax != nil {
-		rows = append(rows, [2]string{"ServerAliveCountMax", fmt.Sprintf("%d", *entry.ServerAliveCountMax)})
-	}
-	if entry.ForwardAgent != nil {
-		rows = append(rows, [2]string{"ForwardAgent", fmt.Sprintf("%t", *entry.ForwardAgent)})
-	}
-	if entry.IdentitiesOnly != nil {
-		rows = append(rows, [2]string{"IdentitiesOnly", fmt.Sprintf("%t", *entry.IdentitiesOnly)})
+	if includedFrom != "" {
+		rows = append(rows, [2]string{"IncludedFrom", includedFrom})
 	}
 
 	for i, row := range rows {
@@ -731,6 +797,8 @@ func (state *AppState) connectSSH() {
 
 	// Use the first pattern as the host alias for ssh command
 	host := entry.Patterns[0]
+	// Record access using a composite key including alias + hostname/user/port
+	state.recordAccess(entry)
 
 	// Stop the TUI application
 	state.App.Stop()
@@ -785,13 +853,10 @@ func (state *AppState) applyTheme(theme AppTheme) {
 }
 
 func (state *AppState) updateFooter() {
+	// Use a single consistent markup color for all shortcut tokens
+	accent := state.currentTheme().MarkupAccent
 	footer := fmt.Sprintf("[::b][%s]Ctrl+C[-:-:-] quit  [%s]:[-:-:-] search  [%s]t[-:-:-] theme  [%s]↑/↓[-:-:-] navigate  [%s]enter[-:-:-] connect  [%s]?[-:-:-] help",
-		state.currentTheme().MarkupSuccess,
-		state.currentTheme().MarkupAccent,
-		state.currentTheme().MarkupAccent,
-		state.currentTheme().MarkupAccent,
-		state.currentTheme().MarkupSuccess,
-		state.currentTheme().MarkupAccent,
+		accent, accent, accent, accent, accent, accent,
 	)
 	state.Footer.SetText(footer)
 }
@@ -928,6 +993,63 @@ func (state *AppState) saveAppConfig() {
 	_ = os.Remove(filepath.Join(configDir, "config.json"))
 }
 
+func getAccessLogPath() string {
+	configPath := getAppConfigPath()
+	if configPath == "" {
+		return ""
+	}
+	configDir := filepath.Dir(configPath)
+	return filepath.Join(configDir, "access.json")
+}
+
+func (state *AppState) loadAccessLog() {
+	if state.LastAccess == nil {
+		state.LastAccess = map[string]string{}
+	}
+	path := getAccessLogPath()
+	if path == "" {
+		return
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 {
+		return
+	}
+	var payload map[string]string
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return
+	}
+	for k, v := range payload {
+		state.LastAccess[k] = v
+	}
+}
+
+func (state *AppState) recordAccess(entry HostEntry) {
+	if state.LastAccess == nil {
+		state.LastAccess = map[string]string{}
+	}
+	key := accessKey(entry)
+	if key == "" {
+		return
+	}
+	state.LastAccess[key] = time.Now().Format(time.RFC3339)
+	state.saveAccessLog()
+}
+
+func (state *AppState) saveAccessLog() {
+	path := getAccessLogPath()
+	if path == "" {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return
+	}
+	data, err := json.MarshalIndent(state.LastAccess, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(path, data, 0644)
+}
+
 func shortenPath(path string, max int) string {
 	if len(path) <= max {
 		return path
@@ -1021,6 +1143,9 @@ func loadSSHConfig(path string) ([]HostEntry, error) {
 			if current == nil {
 				return
 			}
+			if current.SourcePath == "" {
+				current.SourcePath = p
+			}
 			entries = append(entries, *current)
 			current = nil
 		}
@@ -1071,9 +1196,9 @@ func loadSSHConfig(path string) ([]HostEntry, error) {
 			if key == "host" {
 				flush()
 				if len(fields) > 1 {
-					current = &HostEntry{Patterns: fields[1:]}
+					current = &HostEntry{Patterns: fields[1:], SourcePath: p}
 				} else {
-					current = &HostEntry{Patterns: []string{}}
+					current = &HostEntry{Patterns: []string{}, SourcePath: p}
 				}
 				continue
 			}
