@@ -400,12 +400,13 @@ func (state *AppState) renderDetails(index int) {
 
 func (state *AppState) showThemeModal() {
 	state.ThemeModalOpen = true
+	// Disable mouse to prevent background clicks while modal is open
+	state.App.EnableMouse(false)
 	originalThemeIndex := state.ThemeIndex
 
 	modal := tview.NewList()
-	modal.SetBorder(true)
-	modal.SetTitle(" Select Theme (↑/↓ preview, Enter confirm, Esc cancel) ")
-	modal.SetTitleAlign(tview.AlignCenter)
+	// List itself won't draw a border; we'll wrap it in a bordered container
+	modal.SetBorder(false)
 	modal.ShowSecondaryText(false)
 	modal.SetHighlightFullLine(true)
 
@@ -413,11 +414,18 @@ func (state *AppState) showThemeModal() {
 	updateModalStyle := func() {
 		theme := state.currentTheme()
 		modal.SetBackgroundColor(theme.PanelBg)
-		modal.SetBorderColor(theme.Accent)
-		modal.SetTitleColor(theme.Accent)
+		modal.SetBorderColor(theme.Border)
+		// Title and border will be applied on the surrounding box
 		modal.SetMainTextStyle(tcell.StyleDefault.Foreground(theme.Text).Background(theme.PanelBg))
-		modal.SetSelectedBackgroundColor(theme.Accent)
-		modal.SetSelectedTextColor(theme.Bg)
+		// Use selection colors consistent with help modal chips
+		selectedBg := theme.SelectBg
+		selectedFg := theme.SelectFg
+		if selectedBg == theme.PanelBg {
+			selectedBg = theme.Accent
+			selectedFg = theme.Bg
+		}
+		modal.SetSelectedBackgroundColor(selectedBg)
+		modal.SetSelectedTextColor(selectedFg)
 	}
 	updateModalStyle()
 
@@ -447,6 +455,8 @@ func (state *AppState) showThemeModal() {
 			// Save theme to config
 			state.saveAppConfig()
 		}
+		// Re-enable mouse and close modal
+		state.App.EnableMouse(true)
 		state.Pages.RemovePage("theme-modal")
 		state.ThemeModalOpen = false
 		state.App.SetFocus(state.HostList)
@@ -468,18 +478,51 @@ func (state *AppState) showThemeModal() {
 		return event
 	})
 
-	// Create centered modal container (larger so items don't clip)
+	// Create a bordered modal box that holds the list plus a divider and footer
 	modalWidth := 70
-	modalHeight := len(state.ThemeCatalog) + 4
+	modalHeight := len(state.ThemeCatalog) + 6
 	if modalHeight < 10 {
 		modalHeight = 10
 	}
+
+	// Footer centered and muted (instructions moved from title)
+	theme := state.currentTheme()
+	themeFooter := tview.NewTextView()
+	themeFooter.SetTextAlign(tview.AlignCenter)
+	themeFooter.SetTextColor(theme.Muted)
+	themeFooter.SetBackgroundColor(theme.PanelBg)
+	themeFooter.SetText("↑/↓ preview  Enter confirm  Esc cancel")
+
+	// Divider above footer
+	dividerLength := modalWidth - 4
+	themeDivider := tview.NewTextView()
+	themeDivider.SetTextAlign(tview.AlignCenter)
+	themeDivider.SetTextColor(theme.Border)
+	themeDivider.SetBackgroundColor(theme.PanelBg)
+	themeDivider.SetText(strings.Repeat("─", dividerLength))
+
+	// Bordered container for the modal list + footer
+	modalBox := tview.NewFlex().SetDirection(tview.FlexRow)
+	modalBox.SetBorder(true)
+	modalBox.SetTitle(" Select Theme ")
+	modalBox.SetTitleAlign(tview.AlignCenter)
+	modalBox.SetBackgroundColor(theme.PanelBg)
+	modalBox.SetBorderColor(theme.Border)
+	modalBox.SetTitleColor(theme.Text)
+
+	// Add list, small padding, divider, and footer inside the boxed modal
+	paddingMid := tview.NewTextView()
+	paddingMid.SetBackgroundColor(theme.PanelBg)
+	modalBox.AddItem(modal, 0, 1, true)
+	modalBox.AddItem(paddingMid, 1, 0, false)
+	modalBox.AddItem(themeDivider, 1, 0, false)
+	modalBox.AddItem(themeFooter, 1, 0, false)
 
 	modalFlex := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(nil, 0, 1, false).
 		AddItem(tview.NewFlex().SetDirection(tview.FlexColumn).
 			AddItem(nil, 0, 1, false).
-			AddItem(modal, modalWidth, 0, true).
+			AddItem(modalBox, modalWidth, 0, true).
 			AddItem(nil, 0, 1, false), modalHeight, 0, true).
 		AddItem(nil, 0, 1, false)
 
