@@ -192,6 +192,9 @@ func main() {
 		searchFocused := state.App.GetFocus() == state.SearchInput
 
 		switch event.Key() {
+		case tcell.KeyCtrlC:
+			app.Stop()
+			return nil
 		case tcell.KeyEsc:
 			state.App.SetFocus(state.HostList)
 			return nil
@@ -208,9 +211,6 @@ func main() {
 		}
 
 		switch event.Rune() {
-		case 'q':
-			app.Stop()
-			return nil
 		case 't':
 			state.showThemeModal()
 			return nil
