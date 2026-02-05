@@ -16,8 +16,8 @@ SSH config manager with a k9s-inspired TUI, built in Go with tview/tcell.
 go run .
 ```
 
--## Controls
-- `Ctrl+C` quit
+## Controls
+- `q` quit
 - `Enter` connect
 - `:` focus search
 - `t` cycle theme

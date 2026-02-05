@@ -200,9 +200,6 @@ func main() {
 		searchFocused := state.App.GetFocus() == state.SearchInput
 
 		switch event.Key() {
-		case tcell.KeyCtrlC:
-			app.Stop()
-			return nil
 		case tcell.KeyEsc:
 			state.App.SetFocus(state.HostList)
 			return nil
@@ -219,6 +216,9 @@ func main() {
 		}
 
 		switch event.Rune() {
+		case 'q':
+			app.Stop()
+			return nil
 		case 't':
 			state.showThemeModal()
 			return nil
@@ -653,7 +653,7 @@ func (state *AppState) showHelpModal() {
 
 	// Content rows (unchanged texts)
 	navRows := [][2]string{{"↑/↓", "move"}, {":", "search focus"}, {"Esc", "close"}}
-	actRows := [][2]string{{"Enter", "connect"}, {"t", "theme"}, {"Ctrl+C", "quit"}, {"?", "help"}}
+	actRows := [][2]string{{"Enter", "connect"}, {"t", "theme"}, {"q", "quit"}, {"?", "help"}}
 
 	// Add small header TextViews above each table (Navigation / Actions)
 	navHeaderTV := tview.NewTextView()
@@ -855,7 +855,7 @@ func (state *AppState) applyTheme(theme AppTheme) {
 func (state *AppState) updateFooter() {
 	// Use a single consistent markup color for all shortcut tokens
 	accent := state.currentTheme().MarkupAccent
-	footer := fmt.Sprintf("[::b][%s]Ctrl+C[-:-:-] quit  [%s]:[-:-:-] search  [%s]t[-:-:-] theme  [%s]↑/↓[-:-:-] navigate  [%s]enter[-:-:-] connect  [%s]?[-:-:-] help",
+	footer := fmt.Sprintf("[::b][%s]q[-:-:-] quit  [%s]:[-:-:-] search  [%s]t[-:-:-] theme  [%s]↑/↓[-:-:-] navigate  [%s]enter[-:-:-] connect  [%s]?[-:-:-] help",
 		accent, accent, accent, accent, accent, accent,
 	)
 	state.Footer.SetText(footer)
