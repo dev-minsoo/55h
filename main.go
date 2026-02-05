@@ -228,6 +228,12 @@ func main() {
 		case ':':
 			state.App.SetFocus(state.SearchInput)
 			return nil
+		case 'd':
+			state.showDeleteConfirmModal()
+			return nil
+		case 'p':
+			state.testSSHConnection()
+			return nil
 		}
 
 		return event
@@ -653,7 +659,7 @@ func (state *AppState) showHelpModal() {
 
 	// Content rows (unchanged texts)
 	navRows := [][2]string{{"↑/↓", "move"}, {":", "search focus"}, {"Esc", "close"}}
-	actRows := [][2]string{{"Enter", "connect"}, {"t", "theme"}, {"q", "quit"}, {"?", "help"}}
+	actRows := [][2]string{{"Enter", "connect"}, {"p", "ping"}, {"d", "delete"}, {"t", "theme"}, {"q", "quit"}, {"?", "help"}}
 
 	// Add small header TextViews above each table (Navigation / Actions)
 	navHeaderTV := tview.NewTextView()
@@ -785,6 +791,297 @@ func (state *AppState) showHelpModal() {
 	state.App.SetFocus(modalBox)
 }
 
+func (state *AppState) showDeleteConfirmModal() {
+	if state.CurrentIndex < 0 || state.CurrentIndex >= len(state.Filtered) {
+		return
+	}
+
+	entry := state.Filtered[state.CurrentIndex]
+	if len(entry.Patterns) == 0 {
+		return
+	}
+
+	state.ThemeModalOpen = true
+	state.App.EnableMouse(false)
+
+	theme := state.currentTheme()
+	hostName := entry.Patterns[0]
+
+	// Create confirmation modal
+	modalBox := tview.NewFlex().SetDirection(tview.FlexRow)
+	modalBox.SetBorder(true)
+	modalBox.SetTitle(" Delete Host ")
+	modalBox.SetTitleAlign(tview.AlignCenter)
+	modalBox.SetBackgroundColor(theme.PanelBg)
+	modalBox.SetBorderColor(theme.Border)
+	modalBox.SetTitleColor(theme.Text)
+
+	// Message
+	msgText := tview.NewTextView()
+	msgText.SetDynamicColors(true)
+	msgText.SetTextAlign(tview.AlignCenter)
+	msgText.SetBackgroundColor(theme.PanelBg)
+	msgText.SetText(fmt.Sprintf("Delete [%s]%s[-:-:-] from SSH config?", theme.MarkupAccent, hostName))
+
+	closeModal := func() {
+		state.App.EnableMouse(true)
+		state.Pages.RemovePage("delete-modal")
+		state.ThemeModalOpen = false
+		state.App.SetFocus(state.HostList)
+	}
+
+	doDelete := func() {
+		closeModal()
+		if err := state.deleteHostEntry(entry); err != nil {
+			state.showMessageModal("Error", err.Error())
+		} else {
+			state.showMessageModal("Deleted", fmt.Sprintf("Host '%s' has been deleted.", hostName))
+			state.reload()
+		}
+	}
+
+	// Buttons as TextViews
+	btnFlex := tview.NewFlex().SetDirection(tview.FlexColumn)
+
+	yesBtn := tview.NewTextView()
+	yesBtn.SetTextAlign(tview.AlignCenter)
+	yesBtn.SetText("Yes")
+
+	noBtn := tview.NewTextView()
+	noBtn.SetTextAlign(tview.AlignCenter)
+	noBtn.SetText("No")
+
+	// Focus handling between buttons
+	focusYes := true
+	updateBtnStyle := func() {
+		if focusYes {
+			yesBtn.SetBackgroundColor(theme.Accent)
+			yesBtn.SetTextColor(theme.Bg)
+			noBtn.SetBackgroundColor(theme.PanelBg)
+			noBtn.SetTextColor(theme.Text)
+		} else {
+			yesBtn.SetBackgroundColor(theme.PanelBg)
+			yesBtn.SetTextColor(theme.Text)
+			noBtn.SetBackgroundColor(theme.Accent)
+			noBtn.SetTextColor(theme.Bg)
+		}
+	}
+	updateBtnStyle()
+
+	btnFlex.AddItem(nil, 0, 1, false)
+	btnFlex.AddItem(yesBtn, 10, 0, false)
+	btnFlex.AddItem(nil, 2, 0, false)
+	btnFlex.AddItem(noBtn, 10, 0, false)
+	btnFlex.AddItem(nil, 0, 1, false)
+
+	// Small padding between message and buttons
+	padding := tview.NewTextView()
+	padding.SetBackgroundColor(theme.PanelBg)
+
+	modalBox.AddItem(msgText, 0, 1, false)
+	modalBox.AddItem(padding, 1, 0, false)
+	modalBox.AddItem(btnFlex, 1, 0, false)
+
+	modalBox.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEsc:
+			closeModal()
+			return nil
+		case tcell.KeyEnter:
+			if focusYes {
+				doDelete()
+			} else {
+				closeModal()
+			}
+			return nil
+		case tcell.KeyTab, tcell.KeyLeft, tcell.KeyRight:
+			focusYes = !focusYes
+			updateBtnStyle()
+			return nil
+		}
+		switch event.Rune() {
+		case 'y', 'Y':
+			doDelete()
+			return nil
+		case 'n', 'N':
+			closeModal()
+			return nil
+		}
+		return event
+	})
+
+	modalWidth := 50
+	modalHeight := 7
+
+	modalFlex := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().SetDirection(tview.FlexColumn).
+			AddItem(nil, 0, 1, false).
+			AddItem(modalBox, modalWidth, 0, true).
+			AddItem(nil, 0, 1, false), modalHeight, 0, true).
+		AddItem(nil, 0, 1, false)
+
+	state.Pages.AddPage("delete-modal", modalFlex, true, true)
+	state.App.SetFocus(modalBox)
+}
+
+func (state *AppState) deleteHostEntry(entry HostEntry) error {
+	if entry.SourcePath == "" {
+		return fmt.Errorf("unknown source file for this entry")
+	}
+
+	data, err := os.ReadFile(entry.SourcePath)
+	if err != nil {
+		return fmt.Errorf("failed to read config: %v", err)
+	}
+
+	lines := strings.Split(string(data), "\n")
+	var result []string
+	skip := false
+	hostPattern := ""
+	if len(entry.Patterns) > 0 {
+		hostPattern = entry.Patterns[0]
+	}
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		fields := strings.Fields(trimmed)
+
+		if len(fields) >= 2 && strings.ToLower(fields[0]) == "host" {
+			// Check if this is the host block we want to delete
+			isTarget := false
+			for _, p := range fields[1:] {
+				if p == hostPattern {
+					isTarget = true
+					break
+				}
+			}
+			if isTarget {
+				skip = true
+				continue
+			} else {
+				skip = false
+			}
+		}
+
+		if !skip {
+			result = append(result, line)
+		}
+	}
+
+	// Remove trailing empty lines
+	for len(result) > 0 && strings.TrimSpace(result[len(result)-1]) == "" {
+		result = result[:len(result)-1]
+	}
+
+	output := strings.Join(result, "\n")
+	if !strings.HasSuffix(output, "\n") {
+		output += "\n"
+	}
+
+	if err := os.WriteFile(entry.SourcePath, []byte(output), 0644); err != nil {
+		return fmt.Errorf("failed to write config: %v", err)
+	}
+
+	return nil
+}
+
+func (state *AppState) showMessageModal(title, message string) {
+	state.ThemeModalOpen = true
+	state.App.EnableMouse(false)
+
+	theme := state.currentTheme()
+
+	modalBox := tview.NewFlex().SetDirection(tview.FlexRow)
+	modalBox.SetBorder(true)
+	modalBox.SetTitle(fmt.Sprintf(" %s ", title))
+	modalBox.SetTitleAlign(tview.AlignCenter)
+	modalBox.SetBackgroundColor(theme.PanelBg)
+	modalBox.SetBorderColor(theme.Border)
+	modalBox.SetTitleColor(theme.Text)
+
+	msgText := tview.NewTextView()
+	msgText.SetDynamicColors(true)
+	msgText.SetTextAlign(tview.AlignCenter)
+	msgText.SetBackgroundColor(theme.PanelBg)
+	msgText.SetTextColor(theme.Text)
+	msgText.SetText(fmt.Sprintf("\n%s\n", message))
+
+	footerText := tview.NewTextView()
+	footerText.SetTextAlign(tview.AlignCenter)
+	footerText.SetTextColor(theme.Muted)
+	footerText.SetBackgroundColor(theme.PanelBg)
+	footerText.SetText("Press any key to close")
+
+	modalBox.AddItem(msgText, 0, 1, false)
+	modalBox.AddItem(footerText, 1, 0, false)
+
+	closeModal := func() {
+		state.App.EnableMouse(true)
+		state.Pages.RemovePage("message-modal")
+		state.ThemeModalOpen = false
+		state.App.SetFocus(state.HostList)
+	}
+
+	modalBox.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		closeModal()
+		return nil
+	})
+
+	modalWidth := 50
+	modalHeight := 8
+
+	modalFlex := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().SetDirection(tview.FlexColumn).
+			AddItem(nil, 0, 1, false).
+			AddItem(modalBox, modalWidth, 0, true).
+			AddItem(nil, 0, 1, false), modalHeight, 0, true).
+		AddItem(nil, 0, 1, false)
+
+	state.Pages.AddPage("message-modal", modalFlex, true, true)
+	state.App.SetFocus(modalBox)
+}
+
+func (state *AppState) testSSHConnection() {
+	if state.CurrentIndex < 0 || state.CurrentIndex >= len(state.Filtered) {
+		return
+	}
+
+	entry := state.Filtered[state.CurrentIndex]
+	if len(entry.Patterns) == 0 {
+		return
+	}
+
+	host := entry.Patterns[0]
+	state.showMessageModal("Testing", fmt.Sprintf("Testing SSH connection to %s...", host))
+
+	go func() {
+		// Use ssh with ConnectTimeout and BatchMode to test connection
+		cmd := exec.Command("ssh",
+			"-o", "ConnectTimeout=5",
+			"-o", "BatchMode=yes",
+			"-o", "StrictHostKeyChecking=accept-new",
+			host,
+			"exit", "0",
+		)
+
+		err := cmd.Run()
+
+		state.App.QueueUpdateDraw(func() {
+			// Close the "Testing" modal first
+			state.Pages.RemovePage("message-modal")
+			state.ThemeModalOpen = false
+
+			if err != nil {
+				state.showMessageModal("Connection Failed", fmt.Sprintf("Failed to connect to %s\n\nError: %v", host, err))
+			} else {
+				state.showMessageModal("Connection Success", fmt.Sprintf("Successfully connected to %s", host))
+			}
+		})
+	}()
+}
+
 func (state *AppState) connectSSH() {
 	if state.CurrentIndex < 0 || state.CurrentIndex >= len(state.Filtered) {
 		return
@@ -855,8 +1152,8 @@ func (state *AppState) applyTheme(theme AppTheme) {
 func (state *AppState) updateFooter() {
 	// Use a single consistent markup color for all shortcut tokens
 	accent := state.currentTheme().MarkupAccent
-	footer := fmt.Sprintf("[::b][%s]q[-:-:-] quit  [%s]:[-:-:-] search  [%s]t[-:-:-] theme  [%s]↑/↓[-:-:-] navigate  [%s]enter[-:-:-] connect  [%s]?[-:-:-] help",
-		accent, accent, accent, accent, accent, accent,
+	footer := fmt.Sprintf("[::b][%s]q[-:-:-] quit  [%s]:[-:-:-] search  [%s]p[-:-:-] ping  [%s]d[-:-:-] delete  [%s]t[-:-:-] theme  [%s]↑/↓[-:-:-] navigate  [%s]enter[-:-:-] connect  [%s]?[-:-:-] help",
+		accent, accent, accent, accent, accent, accent, accent, accent,
 	)
 	state.Footer.SetText(footer)
 }

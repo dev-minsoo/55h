@@ -19,6 +19,8 @@ go run .
 ## Controls
 - `q` quit
 - `Enter` connect
+- `p` ping (SSH connection test)
+- `d` delete host
 - `:` focus search
 - `t` cycle theme
 - `↑/↓` navigate
