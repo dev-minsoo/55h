@@ -26,6 +26,7 @@ type AppTheme struct {
 	HeaderBg      tcell.Color
 	FooterBg      tcell.Color
 	Label         tcell.Color
+	KeyChipFg     tcell.Color
 	MarkupAccent  string
 	MarkupSuccess string
 	MarkupWarning string
@@ -50,6 +51,7 @@ func DefaultThemes() []AppTheme {
 			"#1a1b26",
 			"#1a1b26",
 			"#7dcfff",
+			"#c0caf5",
 		),
 		newTheme(
 			"Light",
@@ -67,6 +69,7 @@ func DefaultThemes() []AppTheme {
 			"#f7f7f7",
 			"#f7f7f7",
 			"#0550ae",
+			"#24292e",
 		),
 		newTheme(
 			"Neutral",
@@ -84,6 +87,7 @@ func DefaultThemes() []AppTheme {
 			"#2b2f37",
 			"#2b2f37",
 			"#9ecbff",
+			"#d7dae0",
 		),
 		newTheme(
 			"Solarized Dark",
@@ -101,6 +105,7 @@ func DefaultThemes() []AppTheme {
 			"#002b36",
 			"#002b36",
 			"#268bd2",
+			"#93a1a1",
 		),
 		newTheme(
 			"Solarized Light",
@@ -118,6 +123,7 @@ func DefaultThemes() []AppTheme {
 			"#fdf6e3",
 			"#fdf6e3",
 			"#268bd2",
+			"#657b83",
 		),
 		newTheme(
 			"Gruvbox Dark",
@@ -135,6 +141,7 @@ func DefaultThemes() []AppTheme {
 			"#282828",
 			"#282828",
 			"#fb4934",
+			"#ebdbb2",
 		),
 		newTheme(
 			"Gruvbox Light",
@@ -152,6 +159,7 @@ func DefaultThemes() []AppTheme {
 			"#fbf1c7",
 			"#fbf1c7",
 			"#b57614",
+			"#3c3836",
 		),
 		newTheme(
 			"Dracula",
@@ -169,6 +177,7 @@ func DefaultThemes() []AppTheme {
 			"#282a36",
 			"#282a36",
 			"#bd93f9",
+			"#f8f8f2",
 		),
 		newTheme(
 			"Nord",
@@ -186,6 +195,7 @@ func DefaultThemes() []AppTheme {
 			"#2e3440",
 			"#2e3440",
 			"#81a1c1",
+			"#d8dee9",
 		),
 		newTheme(
 			"Oceanic",
@@ -203,6 +213,7 @@ func DefaultThemes() []AppTheme {
 			"#1b2b34",
 			"#1b2b34",
 			"#2ac3de",
+			"#d3e0ea",
 		),
 		newTheme(
 			"Monokai",
@@ -220,6 +231,7 @@ func DefaultThemes() []AppTheme {
 			"#272822",
 			"#272822",
 			"#fd971f",
+			"#f8f8f2",
 		),
 		newTheme(
 			"HighContrast",
@@ -236,6 +248,7 @@ func DefaultThemes() []AppTheme {
 			"#000000",
 			"#000000",
 			"#000000",
+			"#00ff00",
 			"#00ff00",
 		),
 	}
@@ -257,6 +270,7 @@ func newTheme(
 	headerBg string,
 	footerBg string,
 	label string,
+	keyChipFg string,
 ) AppTheme {
 	bgColor := hexColor(bg)
 	panelColor := hexColor(panel)
@@ -272,23 +286,25 @@ func newTheme(
 	headerBgColor := hexColor(headerBg)
 	footerBgColor := hexColor(footerBg)
 	labelColor := hexColor(label)
+	keyChipFgColor := hexColor(keyChipFg)
 
 	return AppTheme{
-		Name:     name,
-		Bg:       bgColor,
-		PanelBg:  panelColor,
-		Border:   borderColor,
-		Text:     textColor,
-		Muted:    mutedColor,
-		Accent:   accentColor,
-		Success:  successColor,
-		Warning:  warningColor,
-		Error:    errorColor,
-		SelectBg: selectBgColor,
-		SelectFg: selectFgColor,
-		HeaderBg: headerBgColor,
-		FooterBg: footerBgColor,
-		Label:    labelColor,
+		Name:      name,
+		Bg:        bgColor,
+		PanelBg:   panelColor,
+		Border:    borderColor,
+		Text:      textColor,
+		Muted:     mutedColor,
+		Accent:    accentColor,
+		Success:   successColor,
+		Warning:   warningColor,
+		Error:     errorColor,
+		SelectBg:  selectBgColor,
+		SelectFg:  selectFgColor,
+		HeaderBg:  headerBgColor,
+		FooterBg:  footerBgColor,
+		Label:     labelColor,
+		KeyChipFg: keyChipFgColor,
 		TView: tview.Theme{
 			PrimitiveBackgroundColor:    bgColor,
 			ContrastBackgroundColor:     panelColor,

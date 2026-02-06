@@ -482,12 +482,39 @@ func (state *AppState) showThemeModal() {
 	modal.ShowSecondaryText(false)
 	modal.SetHighlightFullLine(true)
 
-	// Style the modal with current theme
+	// Create a bordered modal box that holds the list plus a divider and footer
+	modalWidth := 70
+	modalHeight := len(state.ThemeCatalog) + 6
+	if modalHeight < 10 {
+		modalHeight = 10
+	}
+
+	// Footer centered and muted (instructions moved from title)
+	themeFooter := tview.NewTextView()
+	themeFooter.SetTextAlign(tview.AlignCenter)
+	themeFooter.SetText("↑/↓ preview  Enter confirm  Esc cancel")
+
+	// Divider above footer
+	dividerLength := modalWidth - 4
+	themeDivider := tview.NewTextView()
+	themeDivider.SetTextAlign(tview.AlignCenter)
+	themeDivider.SetText(strings.Repeat("─", dividerLength))
+
+	// Bordered container for the modal list + footer
+	modalBox := tview.NewFlex().SetDirection(tview.FlexRow)
+	modalBox.SetBorder(true)
+	modalBox.SetTitle(" Select Theme ")
+	modalBox.SetTitleAlign(tview.AlignCenter)
+
+	// Add list, small padding, divider, and footer inside the boxed modal
+	paddingMid := tview.NewTextView()
+
+	// Style the modal with current theme - now includes all components
 	updateModalStyle := func() {
 		theme := state.currentTheme()
+		// List styling
 		modal.SetBackgroundColor(theme.PanelBg)
 		modal.SetBorderColor(theme.Border)
-		// Title and border will be applied on the surrounding box
 		modal.SetMainTextStyle(tcell.StyleDefault.Foreground(theme.Text).Background(theme.PanelBg))
 		// Use selection colors consistent with help modal chips
 		selectedBg := theme.SelectBg
@@ -498,6 +525,22 @@ func (state *AppState) showThemeModal() {
 		}
 		modal.SetSelectedBackgroundColor(selectedBg)
 		modal.SetSelectedTextColor(selectedFg)
+
+		// Modal box styling
+		modalBox.SetBackgroundColor(theme.PanelBg)
+		modalBox.SetBorderColor(theme.Border)
+		modalBox.SetTitleColor(theme.Text)
+
+		// Footer styling
+		themeFooter.SetTextColor(theme.Muted)
+		themeFooter.SetBackgroundColor(theme.PanelBg)
+
+		// Divider styling
+		themeDivider.SetTextColor(theme.Border)
+		themeDivider.SetBackgroundColor(theme.PanelBg)
+
+		// Padding styling
+		paddingMid.SetBackgroundColor(theme.PanelBg)
 	}
 	updateModalStyle()
 
@@ -550,41 +593,6 @@ func (state *AppState) showThemeModal() {
 		return event
 	})
 
-	// Create a bordered modal box that holds the list plus a divider and footer
-	modalWidth := 70
-	modalHeight := len(state.ThemeCatalog) + 6
-	if modalHeight < 10 {
-		modalHeight = 10
-	}
-
-	// Footer centered and muted (instructions moved from title)
-	theme := state.currentTheme()
-	themeFooter := tview.NewTextView()
-	themeFooter.SetTextAlign(tview.AlignCenter)
-	themeFooter.SetTextColor(theme.Muted)
-	themeFooter.SetBackgroundColor(theme.PanelBg)
-	themeFooter.SetText("↑/↓ preview  Enter confirm  Esc cancel")
-
-	// Divider above footer
-	dividerLength := modalWidth - 4
-	themeDivider := tview.NewTextView()
-	themeDivider.SetTextAlign(tview.AlignCenter)
-	themeDivider.SetTextColor(theme.Border)
-	themeDivider.SetBackgroundColor(theme.PanelBg)
-	themeDivider.SetText(strings.Repeat("─", dividerLength))
-
-	// Bordered container for the modal list + footer
-	modalBox := tview.NewFlex().SetDirection(tview.FlexRow)
-	modalBox.SetBorder(true)
-	modalBox.SetTitle(" Select Theme ")
-	modalBox.SetTitleAlign(tview.AlignCenter)
-	modalBox.SetBackgroundColor(theme.PanelBg)
-	modalBox.SetBorderColor(theme.Border)
-	modalBox.SetTitleColor(theme.Text)
-
-	// Add list, small padding, divider, and footer inside the boxed modal
-	paddingMid := tview.NewTextView()
-	paddingMid.SetBackgroundColor(theme.PanelBg)
 	modalBox.AddItem(modal, 0, 1, true)
 	modalBox.AddItem(paddingMid, 1, 0, false)
 	modalBox.AddItem(themeDivider, 1, 0, false)
@@ -627,8 +635,8 @@ func (state *AppState) showHelpModal() {
 	makeKeyCell := func(text string) *tview.TableCell {
 		display := padCenter(text, chipWidth)
 		c := tview.NewTableCell(display)
-		c.SetTextColor(theme.SelectFg)
-		c.SetBackgroundColor(theme.SelectBg)
+		c.SetTextColor(theme.KeyChipFg)
+		c.SetBackgroundColor(theme.PanelBg)
 		c.SetAlign(tview.AlignCenter)
 		c.SetSelectable(false)
 		c.SetAttributes(tcell.AttrBold)
