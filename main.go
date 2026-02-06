@@ -882,12 +882,21 @@ func (state *AppState) showDeleteConfirmModal() {
 	btnFlex.AddItem(noBtn, 10, 0, false)
 	btnFlex.AddItem(nil, 0, 1, false)
 
-	// Small padding between message and buttons
-	padding := tview.NewTextView()
-	padding.SetBackgroundColor(theme.PanelBg)
+	// Small padding rows: add one above and one below message so the message
+	// sits in the middle row (two extra rows of vertical padding compared to before)
+	topPad := tview.NewTextView()
+	topPad.SetBackgroundColor(theme.PanelBg)
+	bottomPad := tview.NewTextView()
+	bottomPad.SetBackgroundColor(theme.PanelBg)
 
-	modalBox.AddItem(msgText, 0, 1, false)
-	modalBox.AddItem(padding, 1, 0, false)
+	// Ensure message text color matches theme
+	msgText.SetTextColor(theme.Text)
+
+	// Use fixed small heights to avoid excess vertical space and place message
+	// in the middle of the content area: [topPad][msgText][bottomPad][buttons]
+	modalBox.AddItem(topPad, 1, 0, false)
+	modalBox.AddItem(msgText, 1, 0, false)
+	modalBox.AddItem(bottomPad, 1, 0, false)
 	modalBox.AddItem(btnFlex, 1, 0, false)
 
 	modalBox.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -919,8 +928,11 @@ func (state *AppState) showDeleteConfirmModal() {
 	})
 
 	modalWidth := 50
+	// increase overall modal height by 2 to account for the two extra padding rows
 	modalHeight := 7
 
+	// Use nil spacers so the overlay is transparent like the theme/help modals
+	// (all spacers are nil/transparent; no special-case bottom spacer)
 	modalFlex := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(nil, 0, 1, false).
 		AddItem(tview.NewFlex().SetDirection(tview.FlexColumn).
