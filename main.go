@@ -117,7 +117,7 @@ type AppState struct {
 
 const (
 	appVersion = "0.1.0"
-	githubURL  = "https://github.com/"
+	githubURL  = "https://github.com/dev-minsoo/55h"
 )
 
 func main() {
@@ -387,13 +387,14 @@ func (state *AppState) updateHeaderMeta(updatedAt time.Time, loadErr error) {
 	_ = updatedAtText
 	_ = configShort
 
-	state.HeaderMeta.SetText(fmt.Sprintf("[::b]SSH Manager[-:-:-]\n[::b][%s]v%s[-:-:-]\n[%s]%s[-:-:-]\n[%s]55h[-:-:-]",
-		state.currentTheme().MarkupAccent,
-		appVersion,
-		state.currentTheme().MarkupAccent,
-		githubURL,
-		state.currentTheme().MarkupAccent,
-	))
+	// Bottom-align three-line meta within the 5-line header using leading newlines.
+	// Header content (exactly three lines):
+	// 55h v<version>
+	// Config: <shortened path>
+	// https://github.com/dev-minsoo/55h
+	// Leading newlines count = header height (5) - number of content lines (3) = 2
+	meta := fmt.Sprintf("\n\n55h v%s\nConfig: %s\n%s", appVersion, configShort, githubURL)
+	state.HeaderMeta.SetText(meta)
 }
 
 func (state *AppState) renderDetails(index int) {
