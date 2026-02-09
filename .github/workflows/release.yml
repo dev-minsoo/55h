@@ -47,3 +47,62 @@ jobs:
             --generate-notes \
             55h_${{ github.ref_name }}_darwin_amd64.tar.gz \
             55h_${{ github.ref_name }}_darwin_arm64.tar.gz
+
+      - name: Compute sha256
+        id: sha
+        run: |
+          ARM_SHA=$(shasum -a 256 55h_${{ github.ref_name }}_darwin_arm64.tar.gz | awk '{print $1}')
+          AMD_SHA=$(shasum -a 256 55h_${{ github.ref_name }}_darwin_amd64.tar.gz | awk '{print $1}')
+          echo "arm_sha=$ARM_SHA" >> "$GITHUB_OUTPUT"
+          echo "amd_sha=$AMD_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout tap repository
+        uses: actions/checkout@v4
+        with:
+          repository: dev-minsoo/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Update Formula
+        env:
+          VERSION: ${{ github.ref_name }}
+          ARM_URL: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/55h_${{ github.ref_name }}_darwin_arm64.tar.gz
+          AMD_URL: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/55h_${{ github.ref_name }}_darwin_amd64.tar.gz
+          ARM_SHA: ${{ steps.sha.outputs.arm_sha }}
+          AMD_SHA: ${{ steps.sha.outputs.amd_sha }}
+        run: |
+          mkdir -p tap/Formula
+          cat > tap/Formula/55h.rb << EOF
+          class FiftyFiveH < Formula
+            desc "55h CLI tool"
+            homepage "https://github.com/dev-minsoo/55h"
+            version "${VERSION#v}"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "$ARM_URL"
+                sha256 "$ARM_SHA"
+              else
+                url "$AMD_URL"
+                sha256 "$AMD_SHA"
+              end
+            end
+
+            def install
+              bin.install "55h"
+            end
+
+            test do
+              system "#{bin}/55h", "--help"
+            end
+          end
+          EOF
+
+      - name: Commit and push to tap
+        working-directory: tap
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add Formula/55h.rb
+          git diff --staged --quiet || git commit -m "Update 55h to ${{ github.ref_name }}"
+          git push
