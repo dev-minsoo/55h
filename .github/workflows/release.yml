@@ -11,9 +11,7 @@ permissions:
 jobs:
   build-and-release:
     runs-on: macos-latest
-    strategy:
-      matrix:
-        goarch: [amd64, arm64]
+    
 
     steps:
       - name: Checkout
@@ -24,18 +22,26 @@ jobs:
         with:
           go-version: 'stable'
 
-      - name: Build
+      - name: Build amd64
         env:
           GOOS: darwin
-          GOARCH: ${{ matrix.goarch }}
+          GOARCH: amd64
         run: |
           go build -o 55h .
+          tar -czf 55h_${{ github.ref_name }}_darwin_amd64.tar.gz 55h
 
-      - name: Package
+      - name: Build arm64
+        env:
+          GOOS: darwin
+          GOARCH: arm64
         run: |
-          tar -czf 55h_${{ github.ref_name }}_darwin_${{ matrix.goarch }}.tar.gz 55h
+          go build -o 55h .
+          tar -czf 55h_${{ github.ref_name }}_darwin_arm64.tar.gz 55h
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         with:
-          files: 55h_${{ github.ref_name }}_darwin_${{ matrix.goarch }}.tar.gz
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: |
+            55h_${{ github.ref_name }}_darwin_amd64.tar.gz
+            55h_${{ github.ref_name }}_darwin_arm64.tar.gz
