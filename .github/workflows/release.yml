@@ -72,7 +72,8 @@ jobs:
           AMD_SHA: ${{ steps.sha.outputs.amd_sha }}
         run: |
           mkdir -p tap/Formula
-          cat > tap/Formula/55h.rb << EOF
+          rm -f tap/Formula/55h.rb
+          cat > tap/Formula/fifty-five-h.rb << EOF
           class FiftyFiveH < Formula
             desc "55h CLI tool"
             homepage "https://github.com/dev-minsoo/55h"
@@ -103,6 +104,6 @@ jobs:
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git add Formula/55h.rb
-          git diff --staged --quiet || git commit -m "Update 55h to ${{ github.ref_name }}"
+          git add -A Formula/
+          git diff --staged --quiet || git commit -m "Update fifty-five-h to ${{ github.ref_name }}"
           git push
