@@ -8,13 +8,20 @@ Quick highlights
 - Theme selection (saved to user config)
 - In-app actions: connect, ping (connection test), delete host
 
-Requirements
-- Go 1.21+
+Installation
 
-Run / Install
-- Build: `go build -o 55h .` then `./55h`
-- Run directly: `go run .`
-- Override SSH config path: `SSH_CONFIG=/path/to/config ./55h` or `SSH_CONFIG=/path/to/config go run .`
+Homebrew (macOS)
+```bash
+brew install dev-minsoo/tap/55h
+```
+
+Build from source (Go 1.21+ required)
+```bash
+go build -o 55h .
+./55h
+```
+
+Override SSH config path: `SSH_CONFIG=/path/to/config ./55h`
 
 Config & data
 - Default SSH config path: `~/.ssh/config` (can be overridden via SSH_CONFIG env var)
