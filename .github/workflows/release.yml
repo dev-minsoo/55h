@@ -39,7 +39,7 @@ jobs:
           tar -czf 55h_${{ github.ref_name }}_darwin_arm64.tar.gz 55h
 
       - name: Upload Release Asset
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2.4.2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           files: |
