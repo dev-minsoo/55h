@@ -1,26 +1,52 @@
-# 55h
+<p align="center">
+  <img src="docs/banner.svg" alt="55h banner" width="100%" />
+</p>
 
-A compact TUI for browsing and managing **SSH config** entries. Built with **Go** using **tview/tcell**.
+<h1 align="center">55h</h1>
 
-**Why the name?** `55h` looks like `ssh` at a glance—short and well-suited to a terminal tool.
+<p align="center">
+  Terminal-first SSH host manager built with Go and <code>tview/tcell</code>.
+</p>
 
-55h reads your SSH configuration (including `Include` files), lets you quickly find hosts, and provides common actions like connect, test, and delete—all from a fast terminal UI.
+<p align="center">
+  <a href="#installation"><img alt="Go" src="https://img.shields.io/badge/Go-1.21%2B-00ADD8?logo=go"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/License-MIT-green.svg"></a>
+  <a href="#installation"><img alt="Platform" src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux-lightgrey"></a>
+  <a href="#installation"><img alt="Homebrew Tap" src="https://img.shields.io/badge/Homebrew-dev--minsoo%2Ftap-orange?logo=homebrew"></a>
+</p>
 
-## Features
+<p align="center">
+  <code>brew install dev-minsoo/tap/55h</code>
+</p>
 
-- Browse SSH `Host` entries from your SSH config and any included files
-- Fuzzy search with a detail view for the selected host
-- Theme selection (persisted to user config)
+`55h` is focused on one job: making SSH host operations faster without leaving the terminal.
+
+## At a Glance
+
+- Parses `~/.ssh/config` and follows every `Include` target recursively
+- Keeps browsing, searching, and actions in one TUI flow
+- Supports instant actions: connect, test, delete, and create hosts
+
+## Screenshot
+
+![55h UI](docs/image.png)
+
+## Why 55h
+
+- `55h` visually resembles `ssh`, matching the product's purpose
+- Host list + detail panel are always visible in one place
+- Workflow stays keyboard-centric end-to-end
+
+## Core Features
+
+- Host list + detail panel for SSH entries
+- Fuzzy-style search across alias/host/user/options
 - In-app actions:
-  - Connect
-  - Ping / connection test
-  - Delete host entries
-
-## Screenshots
-
-<!-- Screenshot: Main host list -->
-<!-- Screenshot: Host detail view -->
-<!-- Screenshot: Theme selector -->
+  - Connect (replace process with system `ssh`)
+  - Ping/test connection
+  - Delete host block in source file
+- Persistent theme selection
+- CLI for adding entries: `55h add ssh ...`
 
 ## Installation
 
@@ -32,7 +58,7 @@ brew install dev-minsoo/tap/55h
 
 ### Build from source
 
-Go **1.21+** is required.
+Go `1.21+` required.
 
 ```bash
 go build -o 55h .
@@ -47,13 +73,11 @@ SSH_CONFIG=/path/to/config ./55h
 
 ## Usage
 
-Launch the TUI:
-
 ```bash
 55h
 ```
 
-By default, 55h loads `~/.ssh/config` and follows any `Include` directives it finds.
+Default config target: `~/.ssh/config` (with `Include` support).
 
 ## Keybindings
 
@@ -62,107 +86,80 @@ By default, 55h loads `~/.ssh/config` and follows any `Include` directives it fi
 | ↑ / ↓ | Navigate host list |
 | `:` | Focus search |
 | `Esc` | Exit search / close modals |
-| `Enter` | Connect (execs system `ssh` with the selected alias) |
-| `p` | Test / ping connection |
-| `d` | Delete selected host |
-| `t` | Open theme selector / save theme |
+| `Enter` | Connect to selected host |
+| `p` | Connection test (ping) |
+| `d` | Delete selected host block |
+| `t` | Open theme selector |
 | `q` | Quit |
-| `?` | Help (show key bindings) |
+| `?` | Help modal |
 
-Ping / test runs:
+Connection test command:
 
 ```bash
 ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=accept-new <alias> exit 0
 ```
 
-## Behavior Notes
-
-- Deleting a host removes the **entire `Host` block** from the source file that provided it.
-  - The UI only allows deletion when the source path is known.
-- Connecting uses `syscall.Exec` to replace the current process with the system `ssh` binary.
-  - Your terminal session becomes the SSH session.
-
 ## CLI: `add ssh`
-
-Add new SSH host entries directly from the command line.
-
-### Usage (exact)
 
 ```text
 55h add ssh user@host [-p port] [-i identity] [-J jump] [-o Key=Value ...] [--name alias]
 ```
 
-### Flags
+### Supported flags
 
-- `user@host` or `host`
-  - Target for the new entry
-- `-p <port>`
-  - Port
-- `-i <identity>`
-  - `IdentityFile` path
-- `-J <jump>`
-  - `ProxyJump` value
-- `-o Key=Value`
-  - Additional SSH settings
-  - Supported keys (case-insensitive):
-    - `forwardagent` (`yes` | `no`)
-    - `identitiesonly` (`yes` | `no`)
-    - `serveraliveinterval` (integer)
-    - `serveralivecountmax` (integer)
-  - Unknown `-o` keys are ignored
-- `--name <alias>`
-  - Explicitly set the `Host` alias
-  - When running interactively (TTY) and `--name` is omitted, you will be prompted with a suggested alias
-  - When stdin is **not** a TTY, `--name` is required
-
-### Examples
-
-Interactive (prompts for alias if omitted):
-
-```bash
-55h add ssh alice@example.com -p 2222 -i ~/.ssh/id_rsa
-```
-
-Non-interactive / scripted (provide `--name`):
-
-```bash
-55h add ssh example.com --name myhost -p 2200 -J jump.example.org
-```
-
-### Notes
-
-- The `add` command appends a `Host` block to the configured SSH config file
-  - Parent directories are created if needed
-- The command will refuse to add a duplicate alias found anywhere in the loaded config (including included files)
-- The CLI usage string and behavior are intentionally minimal and match the program's parsing rules
+- `-p <port>`: `Port`
+- `-i <identity>`: `IdentityFile`
+- `-J <jump>`: `ProxyJump`
+- `-o Key=Value`: extra SSH options
+  - `forwardagent` (`yes|no`)
+  - `identitiesonly` (`yes|no`)
+  - `serveraliveinterval` (int)
+  - `serveralivecountmax` (int)
+- `--name <alias>`: force host alias
 
 ## Contributing
 
-Contributions, issues, and suggestions are welcome.
+Issues and PRs are welcome.
 
-If you plan to submit a change:
+### Before opening a PR
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Open a pull request with a clear description
+1. Fork the repository and create a feature branch.
+2. Run local checks:
 
-Please use conventional-style commit prefixes where applicable, for example:
+```bash
+make fmt
+make vet
+make test
+make build
+```
 
-- `feat:` new features
-- `fix:` bug fixes
-- `docs:` documentation only changes
-- `style:` formatting, missing semicolons, etc. (no code change)
-- `refactor:` code change that neither fixes a bug nor adds a feature
-- `perf:` performance improvements
-- `test:` adding or correcting tests
-- `build:` changes that affect the build system or external dependencies
-- `ci:` changes to CI configuration
-- `chore:` maintenance and tooling
+3. Verify the app flow manually:
 
-## Inspired by
+```bash
+go run .
+```
 
-- **k9s** — for proving that great TUIs can make complex configs pleasant to work with.
+4. If behavior or keybindings changed, update docs and screenshots in `docs/`.
+
+### Issue Reports
+
+Please include:
+
+- OS and Go version
+- Sanitized sample of related SSH config
+- Expected behavior and actual behavior
+- Reproduction steps
+
+### Commit Style
+
+Recommended prefixes:
+
+- `feat:`
+- `fix:`
+- `docs:`
+- `refactor:`
+- `test:`
+- `chore:`
 
 ## License
 

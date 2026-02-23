@@ -1,26 +1,52 @@
-# 55h
+<p align="center">
+  <img src="docs/banner.svg" alt="55h 배너" width="100%" />
+</p>
 
-**SSH 설정** 항목을 탐색하고 관리하기 위한 컴팩트한 TUI입니다. **Go**로 작성되었으며 **tview/tcell**을 사용합니다.
+<h1 align="center">55h</h1>
 
-**이름의 의미는?** `55h`는 한눈에 보면 `ssh`처럼 보이며, 터미널 도구에 잘 어울리는 간결한 이름입니다.
+<p align="center">
+  Go + <code>tview/tcell</code> 기반의 터미널 중심 SSH 호스트 매니저
+</p>
 
-55h는 SSH 설정(`Include` 파일 포함)을 읽어 호스트를 빠르게 찾고, 연결/테스트/삭제와 같은 일반적인 작업을 빠른 터미널 UI에서 제공합니다.
+<p align="center">
+  <a href="#설치"><img alt="Go" src="https://img.shields.io/badge/Go-1.21%2B-00ADD8?logo=go"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/License-MIT-green.svg"></a>
+  <a href="#설치"><img alt="Platform" src="https://img.shields.io/badge/Platform-macOS%20%7C%20Linux-lightgrey"></a>
+  <a href="#설치"><img alt="Homebrew Tap" src="https://img.shields.io/badge/Homebrew-dev--minsoo%2Ftap-orange?logo=homebrew"></a>
+</p>
 
-## 기능
+<p align="center">
+  <code>brew install dev-minsoo/tap/55h</code>
+</p>
 
-- SSH 설정과 포함된 파일의 `Host` 항목 탐색
-- 선택한 호스트의 상세 보기를 포함한 퍼지 검색
-- 테마 선택 (사용자 설정에 저장)
-- 앱 내 작업:
-  - 연결
-  - 핑 / 연결 테스트
-  - 호스트 항목 삭제
+`55h`는 SSH 호스트 관리의 반복 작업을 빠르게 처리하는 데 집중했습니다.
+
+## 한눈에 보기
+
+- `~/.ssh/config`와 `Include` 대상 파일을 재귀적으로 파싱
+- 탐색, 검색, 실행 작업을 하나의 TUI 플로우로 통합
+- 연결/테스트/삭제/추가를 키보드 중심으로 빠르게 수행
 
 ## 스크린샷
 
-<!-- Screenshot: Main host list -->
-<!-- Screenshot: Host detail view -->
-<!-- Screenshot: Theme selector -->
+![55h UI](docs/image.png)
+
+## 왜 55h인가
+
+- `55h`가 시각적으로 `ssh`를 연상시키는 네이밍
+- Host 목록과 상세를 한 화면에서 확인 가능
+- 처음부터 끝까지 터미널/키보드 중심 워크플로우
+
+## 핵심 기능
+
+- SSH `Host` 목록 + 상세 패널
+- 별칭/호스트/유저/옵션 대상 검색
+- 앱 내 핵심 액션:
+  - 연결
+  - 핑/연결 테스트
+  - 소스 파일의 Host 블록 삭제
+- 테마 선택 및 사용자 설정 저장
+- CLI 추가 기능: `55h add ssh ...`
 
 ## 설치
 
@@ -32,7 +58,7 @@ brew install dev-minsoo/tap/55h
 
 ### 소스에서 빌드
 
-Go **1.21+**가 필요합니다.
+Go `1.21+` 필요:
 
 ```bash
 go build -o 55h .
@@ -47,13 +73,11 @@ SSH_CONFIG=/path/to/config ./55h
 
 ## 사용법
 
-TUI 실행:
-
 ```bash
 55h
 ```
 
-기본적으로 55h는 `~/.ssh/config`를 로드하며, 발견되는 모든 `Include` 지시자를 따라갑니다.
+기본 경로는 `~/.ssh/config`이며, `Include` 지시자를 따라 추가 파일도 함께 읽습니다.
 
 ## 키 바인딩
 
@@ -62,107 +86,80 @@ TUI 실행:
 | ↑ / ↓ | 호스트 목록 이동 |
 | `:` | 검색 포커스 |
 | `Esc` | 검색 종료 / 모달 닫기 |
-| `Enter` | 연결 (선택한 별칭으로 시스템 `ssh` 실행) |
-| `p` | 연결 테스트 / 핑 |
-| `d` | 선택한 호스트 삭제 |
-| `t` | 테마 선택기 열기 / 테마 저장 |
+| `Enter` | 선택 호스트에 연결 |
+| `p` | 연결 테스트 |
+| `d` | 선택 호스트 블록 삭제 |
+| `t` | 테마 선택 |
 | `q` | 종료 |
-| `?` | 도움말 (키 바인딩 표시) |
+| `?` | 도움말 |
 
-핑 / 테스트 실행 명령:
+연결 테스트 실행 명령:
 
 ```bash
 ssh -o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=accept-new <alias> exit 0
 ```
 
-## 동작 참고 사항
-
-- 호스트를 삭제하면 해당 항목을 제공한 소스 파일에서 **`Host` 블록 전체**가 제거됩니다.
-  - 소스 경로가 확인된 경우에만 UI에서 삭제가 허용됩니다.
-- 연결 시 `syscall.Exec`를 사용하여 현재 프로세스를 시스템 `ssh` 바이너리로 대체합니다.
-  - 현재 터미널 세션이 SSH 세션이 됩니다.
-
 ## CLI: `add ssh`
-
-명령줄에서 직접 새로운 SSH 호스트 항목을 추가합니다.
-
-### 사용법 (정확한 형식)
 
 ```text
 55h add ssh user@host [-p port] [-i identity] [-J jump] [-o Key=Value ...] [--name alias]
 ```
 
-### 플래그
+### 지원 플래그
 
-- `user@host` 또는 `host`
-  - 새 항목의 대상
-- `-p <port>`
-  - 포트
-- `-i <identity>`
-  - `IdentityFile` 경로
-- `-J <jump>`
-  - `ProxyJump` 값
-- `-o Key=Value`
-  - 추가 SSH 설정
-  - 지원 키 (대소문자 무관):
-    - `forwardagent` (`yes` | `no`)
-    - `identitiesonly` (`yes` | `no`)
-    - `serveraliveinterval` (정수)
-    - `serveralivecountmax` (정수)
-  - 알 수 없는 `-o` 키는 무시됩니다
-- `--name <alias>`
-  - `Host` 별칭을 명시적으로 설정
-  - 대화형(TTY) 실행에서 `--name`을 생략하면 제안된 별칭을 묻는 프롬프트가 표시됩니다
-  - 표준 입력이 TTY가 **아닌** 경우 `--name`은 필수입니다
+- `-p <port>`: `Port`
+- `-i <identity>`: `IdentityFile`
+- `-J <jump>`: `ProxyJump`
+- `-o Key=Value`: 추가 SSH 옵션
+  - `forwardagent` (`yes|no`)
+  - `identitiesonly` (`yes|no`)
+  - `serveraliveinterval` (정수)
+  - `serveralivecountmax` (정수)
+- `--name <alias>`: 호스트 별칭 강제 지정
 
-### 예제
+## 기여
 
-대화형 (`--name` 생략 시 별칭을 묻습니다):
+이슈와 PR을 환영합니다.
+
+### PR 열기 전 체크
+
+1. 저장소를 포크하고 기능 브랜치를 만듭니다.
+2. 로컬 점검을 실행합니다.
 
 ```bash
-55h add ssh alice@example.com -p 2222 -i ~/.ssh/id_rsa
+make fmt
+make vet
+make test
+make build
 ```
 
-비대화형 / 스크립트 (`--name` 제공):
+3. 앱 동작을 수동으로 확인합니다.
 
 ```bash
-55h add ssh example.com --name myhost -p 2200 -J jump.example.org
+go run .
 ```
 
-### 참고
+4. 동작이나 키 바인딩이 바뀌었다면 `docs/`의 문서/스크린샷을 함께 갱신합니다.
 
-- `add` 명령은 구성된 SSH 설정 파일에 `Host` 블록을 추가합니다
-  - 필요 시 상위 디렉터리가 생성됩니다
-- 로드된 설정(포함된 파일 포함) 어디에서든 중복된 별칭이 발견되면 추가를 거부합니다
-- CLI 사용 문자열과 동작은 의도적으로 최소화되어 있으며, 프로그램의 파싱 규칙과 일치합니다
+### 이슈 작성 가이드
 
-## 기여하기
+아래 정보를 포함해 주세요.
 
-기여, 이슈, 제안 모두 환영합니다.
+- OS와 Go 버전
+- 관련 SSH 설정 샘플(민감정보 제거)
+- 기대 동작과 실제 동작
+- 재현 단계
 
-변경 사항을 제출하려는 경우:
+### 커밋 스타일
 
-1. 저장소를 포크합니다
-2. 기능 브랜치를 생성합니다
-3. 변경 사항을 만듭니다
-4. 명확한 설명과 함께 풀 리퀘스트를 엽니다
+권장 접두사:
 
-가능한 경우 다음과 같은 컨벤셔널 스타일의 커밋 접두사를 사용해 주세요:
-
-- `feat:` 새로운 기능
-- `fix:` 버그 수정
-- `docs:` 문서만 변경
-- `style:` 코드 의미 변경 없는 형식 수정
-- `refactor:` 버그 수정이나 기능 추가가 아닌 코드 변경
-- `perf:` 성능 개선
-- `test:` 테스트 추가 또는 수정
-- `build:` 빌드 시스템 또는 외부 의존성 변경
-- `ci:` CI 설정 변경
-- `chore:` 유지보수 및 도구
-
-## 영감
-
-- **k9s** — 훌륭한 TUI가 복잡한 설정 작업을 즐겁게 만들 수 있음을 보여준 프로젝트.
+- `feat:`
+- `fix:`
+- `docs:`
+- `refactor:`
+- `test:`
+- `chore:`
 
 ## 라이선스
 

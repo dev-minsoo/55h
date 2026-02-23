@@ -1,0 +1,60 @@
+<svg width="1400" height="420" viewBox="0 0 1400 420" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">55h banner</title>
+  <desc id="desc">55h terminal-first SSH host manager banner</desc>
+
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1400" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B1324"/>
+      <stop offset="0.55" stop-color="#10213D"/>
+      <stop offset="1" stop-color="#0E1C34"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="270" y1="70" x2="1160" y2="350" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2ED3B7" stop-opacity="0.52"/>
+      <stop offset="1" stop-color="#4DA5FF" stop-opacity="0.26"/>
+    </linearGradient>
+    <filter id="blur" x="0" y="0" width="1400" height="420" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="65"/>
+    </filter>
+    <filter id="shadow" x="760" y="58" width="575" height="310" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="20" stdDeviation="24" flood-color="#00102D" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <rect width="1400" height="420" fill="url(#bg)"/>
+  <ellipse cx="954" cy="195" rx="410" ry="190" fill="url(#glow)" filter="url(#blur)"/>
+  <circle cx="170" cy="80" r="130" fill="#142B54" opacity="0.55"/>
+  <circle cx="1265" cy="342" r="145" fill="#11366C" opacity="0.34"/>
+
+  <text x="110" y="170" fill="#F4F8FF" font-family="Menlo, Monaco, 'Courier New', monospace" font-size="88" font-weight="700">55h</text>
+  <text x="114" y="214" fill="#9FB7DF" font-family="Menlo, Monaco, 'Courier New', monospace" font-size="24">Terminal-first SSH host manager</text>
+
+  <g opacity="0.92" font-family="Menlo, Monaco, 'Courier New', monospace" font-size="18">
+    <rect x="112" y="249" width="345" height="44" rx="12" fill="#0D1E3C"/>
+    <text x="136" y="277" fill="#6CE4CC">brew install dev-minsoo/tap/55h</text>
+
+    <rect x="112" y="308" width="257" height="44" rx="12" fill="#0D1E3C"/>
+    <text x="136" y="336" fill="#B0C6E8">55h add ssh user@host</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="790" y="88" width="515" height="250" rx="18" fill="#081427" stroke="#345B96" stroke-width="1.4"/>
+    <rect x="790" y="88" width="515" height="34" rx="18" fill="#0F2343"/>
+    <circle cx="815" cy="106" r="5.7" fill="#F46D6D"/>
+    <circle cx="837" cy="106" r="5.7" fill="#F9C74F"/>
+    <circle cx="859" cy="106" r="5.7" fill="#5ADAA3"/>
+
+    <g font-family="Menlo, Monaco, 'Courier New', monospace" font-size="15.5">
+      <text x="820" y="156" fill="#64E0C6">$ 55h</text>
+      <text x="820" y="182" fill="#D9E7FF">dev-prod       ubuntu@10.0.1.22</text>
+      <text x="820" y="208" fill="#D9E7FF">jump-bastion   ec2-user@54.19.x.x</text>
+      <text x="820" y="234" fill="#D9E7FF">analytics      minsoo@192.168.0.35</text>
+      <text x="820" y="264" fill="#7FA1D6">: search host/user/options</text>
+      <text x="820" y="292" fill="#4DA5FF">enter</text>
+      <text x="876" y="292" fill="#D9E7FF">connect</text>
+      <text x="956" y="292" fill="#4DA5FF">p</text>
+      <text x="975" y="292" fill="#D9E7FF">test</text>
+      <text x="1026" y="292" fill="#4DA5FF">d</text>
+      <text x="1045" y="292" fill="#D9E7FF">delete</text>
+    </g>
+  </g>
+</svg>
