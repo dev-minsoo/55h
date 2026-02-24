@@ -115,10 +115,20 @@ type AppState struct {
 	LastAccess     map[string]string
 }
 
-const (
-	appVersion = "0.1.0"
-	githubURL  = "https://github.com/dev-minsoo/55h"
-)
+var appVersion = "dev"
+
+const githubURL = "https://github.com/dev-minsoo/55h"
+
+func versionLabel() string {
+	v := strings.TrimSpace(appVersion)
+	if v == "" {
+		return "dev"
+	}
+	if strings.HasPrefix(v, "v") {
+		return v
+	}
+	return "v" + v
+}
 
 func main() {
 	configPath := resolveConfigPath()
@@ -389,11 +399,11 @@ func (state *AppState) updateHeaderMeta(updatedAt time.Time, loadErr error) {
 
 	// Bottom-align three-line meta within the 5-line header using leading newlines.
 	// Header content (exactly three lines):
-	// 55h v<version>
+	// 55h <version>
 	// Config: <shortened path>
 	// https://github.com/dev-minsoo/55h
 	// Leading newlines count = header height (5) - number of content lines (3) = 2
-	meta := fmt.Sprintf("\n\n55h v%s\nConfig: %s\n%s", appVersion, configShort, githubURL)
+	meta := fmt.Sprintf("\n\n55h %s\nConfig: %s\n%s", versionLabel(), configShort, githubURL)
 	state.HeaderMeta.SetText(meta)
 }
 

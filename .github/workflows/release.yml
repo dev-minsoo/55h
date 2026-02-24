@@ -27,7 +27,7 @@ jobs:
           GOOS: darwin
           GOARCH: amd64
         run: |
-          go build -o 55h .
+          go build -ldflags "-X main.appVersion=${{ github.ref_name }}" -o 55h .
           tar -czf 55h_${{ github.ref_name }}_darwin_amd64.tar.gz 55h
 
       - name: Build arm64
@@ -35,7 +35,7 @@ jobs:
           GOOS: darwin
           GOARCH: arm64
         run: |
-          go build -o 55h .
+          go build -ldflags "-X main.appVersion=${{ github.ref_name }}" -o 55h .
           tar -czf 55h_${{ github.ref_name }}_darwin_arm64.tar.gz 55h
 
       - name: Create Release and Upload Assets
