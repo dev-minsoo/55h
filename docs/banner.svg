@@ -17,10 +17,12 @@
   <rect x="88" y="72" width="590" height="280" rx="30" fill="url(#panel)" stroke="#2F855A"/>
   <text x="126" y="152" fill="#ECFDF5" font-family="Menlo, monospace" font-size="64" font-weight="700">55h</text>
   <text x="128" y="194" fill="#BBF7D0" font-family="Arial, sans-serif" font-size="22">Terminal-first SSH host manager</text>
-  <text x="128" y="236" fill="#D1FAE5" font-family="Arial, sans-serif" font-size="18">Parse config, search hosts, connect, test, and manage entries without leaving the terminal.</text>
-  <rect x="128" y="272" width="246" height="42" rx="21" fill="#0A1A14" stroke="#2F855A"/>
-  <text x="154" y="299" fill="#86EFAC" font-family="Menlo, monospace" font-size="17">brew install dev-minsoo/tap/55h</text>
-  <text x="128" y="334" fill="#99F6E4" font-family="Arial, sans-serif" font-size="18">~/.ssh/config  •  Include  •  Connect / Test / Delete</text>
+  <text x="128" y="236" fill="#D1FAE5" font-family="Arial, sans-serif" font-size="18">
+    <tspan x="128" dy="0">Parse config, search hosts, connect, test, and manage entries</tspan>
+    <tspan x="128" dy="24">without leaving the terminal.</tspan>
+  </text>
+  <rect x="128" y="284" width="372" height="42" rx="21" fill="#0A1A14" stroke="#2F855A"/>
+  <text x="152" y="311" fill="#86EFAC" font-family="Menlo, monospace" font-size="16">brew install dev-minsoo/tap/55h</text>
   <g>
     <rect x="742" y="44" width="608" height="332" rx="26" fill="#07151F" stroke="#2F855A" stroke-width="1.4"/>
     <rect x="742" y="44" width="608" height="30" rx="26" fill="#0B1D2B"/>
