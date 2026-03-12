@@ -1,4 +1,8 @@
-docs/
+docs/*
+!docs/image.png
+!docs/banner*.svg
+PORTFOLIO.ko.md
+PROJECT_SUMMARY.md
 55h
 .claude/
 .omc/
